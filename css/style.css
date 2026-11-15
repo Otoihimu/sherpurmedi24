@@ -395,3 +395,16 @@ img { max-width: 100%; }
 .language-control { display:flex; align-items:center; gap:6px; padding:6px 9px; border:1px solid var(--line); border-radius:10px; color:var(--green); background:#fff; white-space:nowrap; }
 .language-control select { border:0; outline:0; color:var(--navy); background:transparent; font-weight:600; cursor:pointer; max-width:105px; }
 @media (max-width: 820px) { .header-inner { gap:10px; } .language-control { margin-left:auto; padding:5px 7px; } .language-control select { max-width:86px; font-size:12px; } }
+
+/* Medicine search results */
+.med-block { margin: 0 0 26px; }
+.med-title { margin: 0 0 10px; font-size: 18px; }
+.med-list { display: grid; gap: 10px; }
+.med-item { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.med-info { display: grid; gap: 2px; min-width: 0; }
+.med-info small, .med-price small { color: var(--muted); }
+.med-price { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
+.med-price b { font-size: 18px; }
+.stock { padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.stock.ok { color: #0f6b44; background: #e5f6ee; }
+.stock.out { color: #a23333; background: #fdeaea; }
