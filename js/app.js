@@ -2,10 +2,8 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-// ===== SETTINGS =====
-// Paste the "Publish to web -> CSV" links of your Google Sheet tabs here.
-// Leave both empty to use the built-in demo data below. PUBLIC, non-sensitive data only.
-const SHEET_CSV = { pharmacies: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfK6K2ayJvYlY8Y0ZA2EArPReyOZDm9TJ2V_Bxbwcp0IveJaYmW_6nUmodswGnDGme0eSpf9B9f2fV/pub?gid=918088460&single=true&output=csv", medicines: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfK6K2ayJvYlY8Y0ZA2EArPReyOZDm9TJ2V_Bxbwcp0IveJaYmW_6nUmodswGnDGme0eSpf9B9f2fV/pub?gid=1652526658&single=true&output=csv" };
+// Sheet links live in js/config.js (so updating app.js never erases them).
+const SHEET_CSV = (window.SM24_CONFIG && window.SM24_CONFIG.SHEET_CSV) || {};
 
 const DEMO_NOTE = "এটি শুধু ডিজাইন দেখানোর জন্য তৈরি নমুনা ফার্মেসি।";
 let pharmacies = [
@@ -31,7 +29,7 @@ const menuToggle = $("#menuToggle");
 const mainNav = $("#mainNav");
 
 function showPage(pageName, updateHistory = true) {
-  const validPages = ["home", "pharmacies", "how-it-works", "about"];
+  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart"];
   const page = validPages.includes(pageName) ? pageName : "home";
 
   $$(".page-view").forEach((view) => {
@@ -144,7 +142,8 @@ function renderPharmacies() {
           <small>${escapeHTML(ph.name)} · ${escapeHTML(ph.area)} ${ph.is_demo ? '<span class="demo-tag">DEMO</span>' : ""}</small>
         </div>
         <div class="med-price"><b>৳${price}</b><small>/ ${escapeHTML(unit)}</small>
-          <span class="stock ${m.in_stock ? "ok" : "out"}">${m.in_stock ? (en ? "In stock" : "স্টক আছে") : (en ? "Out of stock" : "স্টক নেই")}</span></div>
+          <span class="stock ${m.in_stock ? "ok" : "out"}">${m.in_stock ? (en ? "In stock" : "স্টক আছে") : (en ? "Out of stock" : "স্টক নেই")}</span>
+          <button class="add-btn" type="button" data-add="${medicines.indexOf(m)}" ${m.in_stock ? "" : "disabled"}>${en ? "Add to cart" : "কার্টে যোগ"}</button></div>
       </div>`; }).join("")}</div>`;
 
   const allDemo = filtered.every((p) => p.is_demo);
@@ -154,6 +153,106 @@ function renderPharmacies() {
   emptyState.hidden = filtered.length !== 0 || medMatches.length !== 0;
   pharmacyGrid.hidden = filtered.length === 0;
 }
+
+// ===== Cart (one pharmacy per order). Demo only: no order is sent anywhere. =====
+let areas = [
+  { area: "গোয়ালাবাজার", fee: 30 }, { area: "সরকার বাজার", fee: 40 }, { area: "আউশকান্দি", fee: 50 }
+]; // demo delivery fees; replaced by the Areas tab of the Sheet
+let cart = { pid: null, items: [] };
+let cartArea = "";
+try {
+  const saved = JSON.parse(localStorage.getItem("sm24-cart") || "null");
+  if (saved && Array.isArray(saved.items)) cart = saved;
+  cartArea = localStorage.getItem("sm24-cart-area") || "";
+} catch (e) { /* storage unavailable: cart lives in memory only */ }
+function saveCart() {
+  try { localStorage.setItem("sm24-cart", JSON.stringify(cart)); localStorage.setItem("sm24-cart-area", cartArea); } catch (e) {}
+}
+const tr = (bn, en) => (window.sm24Language === "en" ? en : bn);
+const money = (n) => "৳" + n.toLocaleString(window.sm24Language === "en" ? "en-US" : "bn-BD");
+const unitLabel = (u) => (UNITS[u] ? UNITS[u][window.sm24Language === "en" ? "en" : "bn"] : u);
+
+function addToCart(m) {
+  const ph = pharmacies.find((p) => p.id === m.pharmacy_id);
+  if (!ph || !m.in_stock) return false;
+  if (cart.pid && cart.pid !== m.pharmacy_id && cart.items.length) {
+    if (!confirm(tr("আপনার কার্টে অন্য ফার্মেসির ওষুধ আছে। কার্ট খালি করে এই ফার্মেসির ওষুধ নেবেন?",
+                    "Your cart has items from another pharmacy. Clear it and add this one?"))) return false;
+    cart.items = [];
+  }
+  cart.pid = m.pharmacy_id;
+  const line = cart.items.find((i) => i.name === m.name && i.unit === m.unit);
+  if (line) line.qty = Math.min(99, line.qty + 1);
+  else cart.items.push({ name: m.name, unit: m.unit, price: m.price, qty: 1 });
+  saveCart(); renderCart();
+  return true;
+}
+
+function renderCart() {
+  const count = cart.items.reduce((n, i) => n + i.qty, 0);
+  const fab = $("#cartFab");
+  fab.querySelector(".cart-label").textContent = tr("কার্ট", "Cart");
+  const badge = fab.querySelector(".cart-count");
+  badge.textContent = count; badge.hidden = count === 0;
+
+  const view = $("#cartView");
+  const ph = pharmacies.find((p) => p.id === cart.pid);
+  if (!cart.items.length || !ph) {
+    view.innerHTML = `<h2>${tr("আপনার কার্ট", "Your cart")}</h2>
+      <div class="empty-state"><span>🛒</span><h3>${tr("কার্ট খালি", "Your cart is empty")}</h3>
+      <p>${tr("ওষুধ খুঁজে কার্টে যোগ করুন।", "Search for a medicine and add it to your cart.")}</p>
+      <a class="button button-primary" href="#pharmacies">${tr("ওষুধ খুঁজুন", "Find medicines")}</a></div>`;
+    return;
+  }
+  const subtotal = cart.items.reduce((n, i) => n + i.price * i.qty, 0);
+  const areaRow = areas.find((a) => a.area === cartArea);
+  const fee = areaRow ? areaRow.fee : null;
+  view.innerHTML = `
+    <h2>${tr("আপনার কার্ট", "Your cart")}</h2>
+    <p class="cart-pharmacy">🏪 ${escapeHTML(ph.name)} · ${escapeHTML(ph.area)} ${ph.is_demo ? '<span class="demo-tag">DEMO</span>' : ""}</p>
+    <div class="cart-lines">${cart.items.map((i, idx) => `
+      <div class="cart-line">
+        <div class="cart-name"><strong>${escapeHTML(i.name)}</strong><small>${money(i.price)} / ${escapeHTML(unitLabel(i.unit))}</small></div>
+        <div class="qty"><button type="button" data-dec="${idx}" aria-label="−">−</button><span>${i.qty} ${escapeHTML(unitLabel(i.unit))}</span><button type="button" data-inc="${idx}" aria-label="+">+</button></div>
+        <div class="cart-sum">${money(i.price * i.qty)}</div>
+        <button class="cart-remove" type="button" data-rem="${idx}" aria-label="${tr("বাদ দিন", "Remove")}">✕</button>
+      </div>`).join("")}</div>
+    <label class="cart-area">${tr("ডেলিভারির এলাকা", "Delivery area")}
+      <select id="cartArea"><option value="">${tr("এলাকা বেছে নিন", "Select area")}</option>
+      ${areas.map((a) => `<option value="${escapeHTML(a.area)}" ${a.area === cartArea ? "selected" : ""}>${escapeHTML(a.area)}</option>`).join("")}</select></label>
+    <div class="cart-totals">
+      <div><span>${tr("ওষুধের মূল্য", "Subtotal")}</span><b>${money(subtotal)}</b></div>
+      <div><span>${tr("ডেলিভারি চার্জ", "Delivery fee")}</span><b>${fee === null ? "—" : money(fee)}</b></div>
+      <div class="cart-total"><span>${tr("সর্বমোট", "Total")}</span><b>${fee === null ? "—" : money(subtotal + fee)}</b></div>
+    </div>
+    <button class="button button-primary cart-checkout" type="button" disabled>${tr("অর্ডার নিশ্চিত করুন (শীঘ্রই)", "Confirm order (coming soon)")}</button>
+    <p class="cart-note">${tr("এটি একটি ডেমো কার্ট। এখনো কোনো অর্ডার পাঠানো হয় না। মূল্য ও স্টক ফার্মেসি কর্তৃক নিশ্চিত করা হবে।",
+      "This is a demo cart. No order is sent yet. Prices and stock will be confirmed by the pharmacy.")}</p>
+    <button class="cart-clear" type="button" data-clear>${tr("কার্ট খালি করুন", "Clear cart")}</button>`;
+}
+
+$("#cartView").addEventListener("click", (event) => {
+  const t = event.target.closest("button"); if (!t) return;
+  const d = t.dataset;
+  if (d.inc !== undefined) { const l = cart.items[+d.inc]; if (l) l.qty = Math.min(99, l.qty + 1); }
+  else if (d.dec !== undefined) { const l = cart.items[+d.dec]; if (l && --l.qty <= 0) cart.items.splice(+d.dec, 1); }
+  else if (d.rem !== undefined) cart.items.splice(+d.rem, 1);
+  else if (d.clear !== undefined) cart.items = [];
+  else return;
+  if (!cart.items.length) cart.pid = null;
+  saveCart(); renderCart();
+});
+$("#cartView").addEventListener("change", (event) => {
+  if (event.target.id === "cartArea") { cartArea = event.target.value; saveCart(); renderCart(); }
+});
+$("#medicineResults").addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-add]");
+  if (!btn || btn.disabled) return;
+  if (addToCart(medicines[+btn.dataset.add])) {
+    const old = btn.textContent; btn.textContent = "✓";
+    setTimeout(() => { btn.textContent = old; }, 900);
+  }
+});
 
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -225,6 +324,7 @@ function applyLanguage(lang) {
   const labels = chosen === 'bn' ? ['সব এলাকা','গোয়ালাবাজার','সরকার বাজার','আউশকান্দি'] : ['All areas','Goalabazar','Sarker Bazar','Aushkandi'];
   [...areaOptions].forEach((option, i) => { if (labels[i]) option.textContent = labels[i]; });
   renderPharmacies();
+  renderCart();
   localStorage.setItem('sm24-language', chosen);
   if (languageSelect) languageSelect.value = chosen;
 }
@@ -252,15 +352,27 @@ function parseCSV(text) {
 const isYes = (v) => String(v || "").trim().toLowerCase() === "yes";
 async function loadSheetData() {
   if (!SHEET_CSV.pharmacies || !SHEET_CSV.medicines) return;
+  const get = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); });
   try {
-    const [p, m] = await Promise.all([SHEET_CSV.pharmacies, SHEET_CSV.medicines].map((u) =>
-      fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })));
+    const [p, m, a] = await Promise.all([get(SHEET_CSV.pharmacies), get(SHEET_CSV.medicines),
+      SHEET_CSV.areas ? get(SHEET_CSV.areas).catch(() => null) : Promise.resolve(null)]);
     pharmacies = parseCSV(p).filter((r) => (r.status || "").toLowerCase() === "approved")
       .map((r) => ({ id: r.id, name: r.name, area: r.area, description: r.description || r.address || "", is_demo: isYes(r.is_demo) }));
     medicines = parseCSV(m).map((r) => ({ pharmacy_id: r.pharmacy_id, name: r.medicine_name, generic: r.generic || "",
       unit: (r.unit || "").toLowerCase(), price: Number(r.price), in_stock: isYes(r.in_stock) }))
       .filter((r) => r.name && !isNaN(r.price));
-    renderPharmacies();
+    if (a) {
+      const parsed = parseCSV(a).map((r) => ({ area: r.area, fee: Number(r.delivery_fee) })).filter((r) => r.area && !isNaN(r.fee));
+      if (parsed.length) areas = parsed;
+    }
+    // Refresh cart prices from the latest Sheet data; drop items that no longer exist.
+    cart.items = cart.items.map((i) => {
+      const m2 = medicines.find((x) => x.pharmacy_id === cart.pid && x.name === i.name && x.unit === i.unit);
+      return m2 && m2.in_stock ? { ...i, price: m2.price } : null;
+    }).filter(Boolean);
+    if (!cart.items.length) cart.pid = null;
+    saveCart();
+    renderPharmacies(); renderCart();
   } catch (err) {
     console.warn("Sheet load failed; using built-in demo data.", err);
   }
