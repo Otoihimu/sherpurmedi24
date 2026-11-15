@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/config.js"></script>
   <script src="js/app.js" defer></script>
 </head>
 <body>
@@ -151,6 +152,10 @@
     </section>
     </div>
 
+    <div class="page-view" data-page="cart" id="page-cart" hidden>
+    <section class="section"><div class="container cart-container" id="cartView"></div></section>
+    </div>
+
     <div class="page-view" data-page="how-it-works" id="page-how-it-works">
     <section class="how-section" id="how-it-works">
       <div class="container">
@@ -178,6 +183,8 @@
     </div>
 
   </main>
+
+  <a class="cart-fab" id="cartFab" href="#cart" data-route="cart"><span aria-hidden="true">🛒</span><span class="cart-label">কার্ট</span><span class="cart-count" hidden>0</span></a>
 
   <footer class="site-footer">
     <div class="container footer-inner">
