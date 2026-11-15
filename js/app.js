@@ -5,7 +5,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 // ===== SETTINGS =====
 // Paste the "Publish to web -> CSV" links of your Google Sheet tabs here.
 // Leave both empty to use the built-in demo data below. PUBLIC, non-sensitive data only.
-const SHEET_CSV = { pharmacies: "", medicines: "" };
+const SHEET_CSV = { pharmacies: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfK6K2ayJvYlY8Y0ZA2EArPReyOZDm9TJ2V_Bxbwcp0IveJaYmW_6nUmodswGnDGme0eSpf9B9f2fV/pub?gid=918088460&single=true&output=csv", medicines: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfK6K2ayJvYlY8Y0ZA2EArPReyOZDm9TJ2V_Bxbwcp0IveJaYmW_6nUmodswGnDGme0eSpf9B9f2fV/pub?gid=1652526658&single=true&output=csv" };
 
 const DEMO_NOTE = "এটি শুধু ডিজাইন দেখানোর জন্য তৈরি নমুনা ফার্মেসি।";
 let pharmacies = [
