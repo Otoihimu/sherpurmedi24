@@ -225,9 +225,8 @@ function renderCart() {
       <div><span>${tr("ডেলিভারি চার্জ", "Delivery fee")}</span><b>${fee === null ? "—" : money(fee)}</b></div>
       <div class="cart-total"><span>${tr("সর্বমোট", "Total")}</span><b>${fee === null ? "—" : money(subtotal + fee)}</b></div>
     </div>
-    <button class="button button-primary cart-checkout" type="button" disabled>${tr("অর্ডার নিশ্চিত করুন (শীঘ্রই)", "Confirm order (coming soon)")}</button>
-    <p class="cart-note">${tr("এটি একটি ডেমো কার্ট। এখনো কোনো অর্ডার পাঠানো হয় না। মূল্য ও স্টক ফার্মেসি কর্তৃক নিশ্চিত করা হবে।",
-      "This is a demo cart. No order is sent yet. Prices and stock will be confirmed by the pharmacy.")}</p>
+    <button class="button button-primary cart-checkout" type="button">${tr("Checkout / অর্ডার দিন", "Checkout")}</button>
+    <p class="cart-note">${tr("অর্ডারটি ফার্মেসির নিশ্চিতকরণের অপেক্ষায় থাকবে। প্রদর্শিত মূল্য ও স্টক চূড়ান্ত নয়।", "Orders remain pending pharmacy confirmation. Displayed prices and stock are not final.")}</p>
     <button class="cart-clear" type="button" data-clear>${tr("কার্ট খালি করুন", "Clear cart")}</button>`;
 }
 
@@ -568,6 +567,121 @@ loadSheetData();
     if (edit) editSavedAddress(edit.dataset.addressEdit);
     if (def) makeAddressDefault(def.dataset.addressDefault);
     if (del) deleteSavedAddress(del.dataset.addressDelete);
+  });
+
+
+  // Phase 5: customer checkout. This is a development workflow, not live commerce.
+  document.addEventListener("click", async (event) => {
+    const checkoutButton = event.target.closest(".cart-checkout");
+    if (!checkoutButton) return;
+    if (!currentUser) {
+      say("Please log in before checkout.", true);
+      show();
+      setMode("login");
+      return;
+    }
+    if (!cart.items.length || !cart.pid) return;
+    const pharmacy = pharmacies.find(p => p.id === cart.pid);
+    if (!pharmacy || pharmacy.is_demo) {
+      alert("ডেমো ফার্মেসিতে অর্ডার করা যাবে না। অনুমোদিত বাস্তব ফার্মেসির তালিকা যুক্ত হলে অর্ডার দিন।");
+      return;
+    }
+    await loadSavedAddresses();
+    if (!savedAddresses.length) {
+      alert("Checkout-এর আগে Profile থেকে অন্তত একটি delivery address যোগ করুন।");
+      show();
+      return;
+    }
+    const availableAreas = areas.map(x => x.area);
+    const choices = savedAddresses.filter(a => availableAreas.includes(a.area));
+    if (!choices.length) {
+      alert("আপনার Saved Address-এর এলাকার জন্য delivery fee সেট করা নেই।");
+      return;
+    }
+    const previous = document.getElementById("checkoutPanel");
+    if (previous) previous.remove();
+    const panel = document.createElement("section");
+    panel.id = "checkoutPanel";
+    panel.className = "checkout-panel";
+    panel.innerHTML = `
+      <div class="checkout-panel-head"><h3>অর্ডার নিশ্চিত করুন</h3><button type="button" data-checkout-close aria-label="Close">×</button></div>
+      <p>ফার্মেসি: <strong>${escapeHTML(pharmacy.name)}</strong></p>
+      <label>ডেলিভারি ঠিকানা
+        <select id="checkoutAddress" required>
+          ${choices.map(ad => `<option value="${escapeHTML(ad.id)}" ${ad.is_default ? "selected" : ""}>${escapeHTML(ad.label)} — ${escapeHTML(ad.area)}, ${escapeHTML(ad.village_road)}</option>`).join("")}
+        </select>
+      </label>
+      <label>পেমেন্ট পদ্ধতি
+        <select id="checkoutPayment"><option value="cod">Cash on Delivery (COD)</option><option value="bkash" disabled>bKash — ফার্মেসির অনুমোদিত নম্বর যোগ হলে চালু হবে</option></select>
+      </label>
+      <label>অর্ডার নোট (ঐচ্ছিক)<textarea id="checkoutNote" rows="2" maxlength="500" placeholder="ফার্মেসির জন্য অতিরিক্ত তথ্য"></textarea></label>
+      <div id="checkoutSummary" class="checkout-summary"></div>
+      <button type="button" id="placeOrderButton" class="button button-primary">অর্ডার পাঠান</button>
+      <p id="checkoutStatus" class="checkout-status" role="status" aria-live="polite"></p>
+      <small>এটি ডেভেলপমেন্ট পর্যায়ের অর্ডার। কোনো পেমেন্ট নেওয়া হবে না; ফার্মেসি মূল্য, স্টক ও অর্ডার নিশ্চিত করবে।</small>`;
+    $("#cartView").appendChild(panel);
+
+    const getAddress = () => choices.find(ad => ad.id === $("#checkoutAddress").value) || choices[0];
+    const updateSummary = () => {
+      const ad = getAddress();
+      const fee = areas.find(x => x.area === ad.area)?.fee;
+      const subtotal = cart.items.reduce((sum, item) => sum + Number(item.price) * Number(item.qty), 0);
+      $("#checkoutSummary").textContent = fee == null
+        ? "এই এলাকার ডেলিভারি চার্জ নির্ধারিত নয়।"
+        : `ওষুধের আনুমানিক মূল্য: ${money(subtotal)} · ডেলিভারি: ${money(fee)} · মোট: ${money(subtotal + fee)}`;
+      $("#placeOrderButton").disabled = fee == null;
+    };
+    $("#checkoutAddress").addEventListener("change", updateSummary);
+    updateSummary();
+  });
+
+  document.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-checkout-close]")) {
+      document.getElementById("checkoutPanel")?.remove();
+      return;
+    }
+    const submit = event.target.closest("#placeOrderButton");
+    if (!submit) return;
+    const statusNode = $("#checkoutStatus");
+    const address = savedAddresses.find(a => a.id === $("#checkoutAddress").value);
+    const pharmacy = pharmacies.find(p => p.id === cart.pid);
+    const fee = address && areas.find(x => x.area === address.area)?.fee;
+    if (!currentUser || !address || !pharmacy || pharmacy.is_demo || fee == null || !cart.items.length) {
+      statusNode.textContent = "Checkout তথ্য অসম্পূর্ণ। আবার চেষ্টা করুন।";
+      return;
+    }
+    const subtotal = cart.items.reduce((sum, item) => sum + Number(item.price) * Number(item.qty), 0);
+    const deliveryAddress = [
+      `Recipient: ${address.recipient_name}`, `Phone: ${address.phone}`, `Area: ${address.area}`,
+      `Village/Road: ${address.village_road}`, `House: ${address.house_building}`,
+      address.landmark ? `Landmark: ${address.landmark}` : "",
+      address.delivery_note ? `Instructions: ${address.delivery_note}` : ""
+    ].filter(Boolean).join("\\n");
+    const payload = {
+      pharmacy_id: String(cart.pid),
+      status: "pending",
+      customer_name: address.recipient_name,
+      customer_phone: address.phone,
+      delivery_area: address.area,
+      delivery_address: deliveryAddress,
+      note: $("#checkoutNote").value.trim() || null,
+      subtotal, delivery_fee: Number(fee), total: subtotal + Number(fee),
+      payment_method: "cod", payment_status: "unpaid",
+      items: cart.items.map(item => ({ name: item.name, unit: item.unit, price: Number(item.price), qty: Number(item.qty) }))
+    };
+    submit.disabled = true;
+    statusNode.textContent = "অর্ডার পাঠানো হচ্ছে…";
+    try {
+      const { data, error } = await sb.rpc("sm24_place_customer_order", { p_order: payload });
+      if (error) throw error;
+      cart.items = []; cart.pid = null; saveCart(); renderCart();
+      const orderId = data || "—";
+      $("#cartView").innerHTML = `<div class="order-success"><h2>অর্ডার জমা হয়েছে</h2><p>Order ID: <strong>${escapeHTML(orderId)}</strong></p><p>স্ট্যাটাস: Pending pharmacy confirmation</p><p>এখনো কোনো পেমেন্ট নেওয়া হয়নি। ফার্মেসি অর্ডার ও মূল্য নিশ্চিত করবে।</p></div>`;
+    } catch (err) {
+      statusNode.textContent = err.message || "অর্ডার জমা দেওয়া যায়নি।";
+      statusNode.classList.add("is-error");
+      submit.disabled = false;
+    }
   });
 
   async function loadCurrentProfile(user) {
