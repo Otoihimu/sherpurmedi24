@@ -199,13 +199,14 @@
       </div>
       <form id="authForm">
         <label id="authNameWrap" hidden>Full name<input id="authName" autocomplete="name"></label>
-        <label>Email<input id="authEmail" type="email" required autocomplete="email"></label>
+        <label id="authIdentifierLabel">Email or phone number<input id="authEmail" type="text" required autocomplete="username" placeholder="Email or phone number"></label>
         <label>Password<input id="authPassword" type="password" required minlength="6" autocomplete="current-password"></label>
         <label id="authPhoneWrap" hidden>Phone number<input id="authPhone" type="tel" autocomplete="tel"></label>
         <label id="authAreaWrap" hidden>Area<select id="authArea"><option value="">Select area</option><option>গোয়ালাবাজার</option><option>সরকার বাজার</option><option>আউশকান্দি</option></select></label>
         <button class="button button-primary auth-submit" id="authSubmit" type="submit">Login</button>
       </form>
-      <button id="authLogout" class="cart-clear" type="button" hidden>Logout</button>
+      <div id="authProfile" class="auth-profile" hidden><p id="authProfileName"></p><p id="authProfileEmail"></p></div>
+      <button id="authLogout" class="button auth-logout" type="button" hidden>Log out</button>
       <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
       <small>Demo stage: do not enter sensitive personal information.</small>
     </div>
