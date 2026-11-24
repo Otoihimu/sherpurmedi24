@@ -433,3 +433,22 @@ img { max-width: 100%; }
 .cart-note { color: var(--muted); font-size: 13px; }
 .cart-clear { margin-top: 6px; border: 0; background: none; color: #a23333; cursor: pointer; text-decoration: underline; }
 @media (max-width: 560px) { .cart-line { grid-template-columns: 1fr auto; } .cart-sum { text-align: left; } .qty span { min-width: 56px; } }
+
+
+/* Phase 4A — customer authentication dialog */
+.auth-overlay[hidden] { display:none !important; }
+.auth-overlay { position:fixed; inset:0; z-index:300; display:grid; place-items:center; padding:18px; background:rgba(8,25,18,.55); }
+.auth-panel { position:relative; width:min(100%,440px); max-height:90svh; overflow:auto; padding:26px; border-radius:18px; background:#fff; box-shadow:0 24px 70px rgba(0,0,0,.25); }
+.auth-panel h2 { margin:0 34px 6px 0; color:var(--navy); }
+.auth-panel p { color:var(--muted); }
+.auth-close { position:absolute; top:12px; right:14px; width:36px; height:36px; border:0; border-radius:9px; background:var(--green-soft); color:var(--navy); font-size:24px; cursor:pointer; }
+.auth-tabs { display:flex; gap:8px; margin:18px 0; }
+.auth-tab { flex:1; padding:10px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--navy); cursor:pointer; }
+.auth-tab.is-active { border-color:var(--green); background:var(--green-soft); color:var(--green); font-weight:700; }
+#authForm { display:grid; gap:12px; }
+#authForm label { display:grid; gap:5px; color:var(--ink); font-weight:600; font-size:13px; }
+#authForm input, #authForm select { width:100%; min-height:43px; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); }
+.auth-submit { width:100%; }
+.auth-status { min-height:22px; font-size:13px; }
+.auth-panel small { color:var(--muted); }
+@media(max-width:600px) { #accountOpen { padding:8px 10px; min-height:38px; font-size:12px; } .auth-panel { padding:21px; } }
