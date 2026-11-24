@@ -29,10 +29,18 @@ const menuToggle = $("#menuToggle");
 const mainNav = $("#mainNav");
 
 function showPage(pageName, updateHistory = true) {
-  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin", "pharmacy-apply", "pharmacy-dashboard"];
+  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin", "pharmacy-apply", "pharmacy-dashboard", "my-orders", "rider-apply", "rider-dashboard"];
   const page = validPages.includes(pageName) ? pageName : "home";
   if (page === "pharmacy-dashboard" && !window.SM24_PHARMACY?.isOwner()) {
     window.SM24_PHARMACY?.showDenied();
+    return showPage("home", false);
+  }
+  if (page === "rider-dashboard" && !(currentUser && currentProfile?.role === "rider" && currentProfile?.approved === true)) {
+    toast("অনুমোদিত Rider Account দিয়ে Login করুন।", true);
+    return showPage("home", false);
+  }
+  if (page === "my-orders" && !currentUser) {
+    toast("অর্ডার দেখতে Customer Account দিয়ে Login করুন।", true);
     return showPage("home", false);
   }
   if (page === "cart" && currentProfile?.role === "pharmacy") {
@@ -154,7 +162,7 @@ function renderPharmacies() {
           <small>${escapeHTML(ph.name)} · ${escapeHTML(ph.area)} ${ph.is_demo ? '<span class="demo-tag">DEMO</span>' : ""}</small>
         </div>
         <div class="med-price"><b>৳${price}</b><small>/ ${escapeHTML(unit)}</small>
-          <span class="stock ${m.in_stock ? "ok" : "out"}">${m.in_stock ? (en ? "In stock" : "স্টক আছে") : (en ? "Out of stock" : "স্টক নেই")}</span>
+          <span class="stock ${m.in_stock ? "ok" : "out"}">${m.in_stock ? (m.stock_qty != null ? `${en ? "Stock" : "স্টক"}: ${m.stock_qty}` : (en ? "In stock" : "স্টক আছে")) : (en ? "Out of stock" : "স্টক নেই")}</span>
           <button class="add-btn" type="button" data-add="${medicines.indexOf(m)}" ${m.in_stock ? "" : "disabled"}>${en ? "Add to cart" : "কার্টে যোগ"}</button></div>
       </div>`; }).join("")}</div>`;
 
@@ -194,8 +202,8 @@ function addToCart(m) {
   }
   cart.pid = m.pharmacy_id;
   const line = cart.items.find((i) => i.name === m.name && i.unit === m.unit);
-  if (line) line.qty = Math.min(99, line.qty + 1);
-  else cart.items.push({ name: m.name, unit: m.unit, price: m.price, qty: 1 });
+  if (line) line.qty = Math.min(m.stock_qty ?? 99, 99, line.qty + 1);
+  else cart.items.push({ inventory_id: m.id || null, name: m.name, unit: m.unit, price: m.price, qty: 1, stock_qty: m.stock_qty ?? null });
   saveCart(); renderCart();
   return true;
 }
@@ -375,6 +383,21 @@ async function loadApprovedPharmaciesFromSupabase() {
     is_demo: false, owner_name: p.owner_name, source: "supabase"
   }));
 }
+async function loadLivePharmacyInventory() {
+  const cfg = window.SM24_CONFIG || {};
+  if (!window.supabase || !cfg.SUPABASE_URL || !cfg.SUPABASE_PUBLISHABLE_KEY) return [];
+  const client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
+  const { data, error } = await client.from("pharmacy_inventory")
+    .select("id, pharmacy_id, name, generic_name, unit, price, stock_qty, is_available")
+    .eq("is_available", true).gt("stock_qty", 0).order("name");
+  if (error) { console.warn("Live inventory unavailable:", error.message); return []; }
+  return (data || []).map(x => ({
+    id: x.id, pharmacy_id: String(x.pharmacy_id), name: x.name,
+    generic: x.generic_name || "", unit: x.unit, price: Number(x.price),
+    stock_qty: Number(x.stock_qty), in_stock: Number(x.stock_qty) > 0,
+    is_demo: false, source: "supabase"
+  }));
+}
 async function loadSheetData() {
   const get = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); });
   try {
@@ -391,6 +414,10 @@ async function loadSheetData() {
     medicines = parseCSV(m).map((r) => ({ pharmacy_id: r.pharmacy_id, name: r.medicine_name, generic: r.generic || "",
       unit: (r.unit || "").toLowerCase(), price: Number(r.price), in_stock: isYes(r.in_stock) }))
       .filter((r) => r.name && !isNaN(r.price));
+    const liveInventory = await loadLivePharmacyInventory();
+    const livePharmacyIds = new Set(liveInventory.map(x => String(x.pharmacy_id)));
+    medicines = medicines.filter(m => !livePharmacyIds.has(String(m.pharmacy_id)));
+    medicines.push(...liveInventory);
     if (a) {
       const parsed = parseCSV(a).map((r) => ({ area: r.area, fee: Number(r.delivery_fee) })).filter((r) => r.area && !isNaN(r.fee));
       if (parsed.length) areas = parsed;
@@ -471,7 +498,13 @@ loadSheetData();
     const applyLink = document.getElementById("pharmacyApplyNav");
     if (applyLink) applyLink.hidden = currentProfile?.role === "pharmacy" && currentProfile?.approved === true;
     const cartFab = document.getElementById("cartFab");
-    if (cartFab) cartFab.hidden = currentProfile?.role === "pharmacy" || currentProfile?.role === "admin";
+    if (cartFab) cartFab.hidden = ["pharmacy","admin","rider"].includes(currentProfile?.role);
+    const myOrdersLink = document.getElementById("myOrdersNav");
+    if (myOrdersLink) myOrdersLink.hidden = !signedIn || currentProfile?.role !== "customer";
+    const riderApplyLink = document.getElementById("riderApplyNav");
+    if (riderApplyLink) riderApplyLink.hidden = !signedIn || ["rider","admin","pharmacy"].includes(currentProfile?.role);
+    const riderDashboardLink = document.getElementById("riderDashboardNav");
+    if (riderDashboardLink) riderDashboardLink.hidden = !(signedIn && currentProfile?.role === "rider" && currentProfile?.approved === true);
     authForm.hidden = signedIn;
     tabsWrap.hidden = signedIn;
     profile.hidden = !signedIn;
@@ -489,7 +522,7 @@ loadSheetData();
       $id("authProfileAddress").textContent = currentProfile?.address || "—";
       const role = currentProfile?.role || "customer";
       const isPharmacy = role === "pharmacy";
-      $id("authProfileRole").textContent = role === "customer" ? "Customer" : role === "admin" ? "Admin" : role === "pharmacy" ? "Pharmacy Owner" : role;
+      $id("authProfileRole").textContent = role === "customer" ? "Customer" : role === "admin" ? "Admin" : role === "pharmacy" ? "Pharmacy Owner" : role === "rider" ? "Rider" : role;
       $id("authProfileApproval").textContent = currentProfile ? (currentProfile.approved ? "Approved" : "Pending approval") : "Not loaded";
       const savedAddressSection = document.querySelector(".saved-addresses");
       if (savedAddressSection) savedAddressSection.hidden = isPharmacy || role === "admin";
@@ -709,7 +742,7 @@ loadSheetData();
       note: $("#checkoutNote").value.trim() || null,
       subtotal, delivery_fee: Number(fee), total: subtotal + Number(fee),
       payment_method: "cod", payment_status: "unpaid",
-      items: cart.items.map(item => ({ name: item.name, unit: item.unit, price: Number(item.price), qty: Number(item.qty) }))
+      items: cart.items.map(item => ({ inventory_id: item.inventory_id, name: item.name, unit: item.unit, price: Number(item.price), qty: Number(item.qty) }))
     };
     submit.disabled = true;
     statusNode.textContent = "অর্ডার পাঠানো হচ্ছে…";
@@ -743,8 +776,102 @@ loadSheetData();
       console.warn("Profile load failed:", err.message || err);
     }
     if (currentUser?.id === user.id) { renderAccountState(); renderPharmacyApplyState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true));
-      if (location.hash === "#pharmacy-dashboard" && window.SM24_PHARMACY?.isOwner()) window.SM24_PHARMACY.refresh().catch(e => toast(e.message, true)); }
+      if (location.hash === "#pharmacy-dashboard" && window.SM24_PHARMACY?.isOwner()) window.SM24_PHARMACY.refresh().catch(e => toast(e.message, true));
+      if (location.hash === "#my-orders") window.loadCustomerOrders?.();
+      if (location.hash === "#rider-apply") window.loadRiderApplicationState?.();
+      if (location.hash === "#rider-dashboard") window.loadRiderDeliveries?.(); }
   }
+  window.loadCustomerOrders = async function() {
+    const status = document.getElementById("customerOrdersStatus");
+    const root = document.getElementById("customerOrdersList");
+    if (!currentUser || !sb) { status.textContent = "অর্ডার দেখতে Customer Account দিয়ে Login করুন।"; root.innerHTML = ""; return; }
+    status.textContent = "অর্ডার লোড হচ্ছে…";
+    const { data, error } = await sb.from("orders")
+      .select("id,created_at,status,pharmacy_id,delivery_area,delivery_address,subtotal,delivery_fee,total,payment_method,payment_status")
+      .eq("customer_id", currentUser.id).order("created_at", {ascending:false}).limit(100);
+    if (error) { status.textContent = "অর্ডার লোড করা যায়নি: " + error.message; return; }
+    if (!data.length) { status.textContent = "আপনার এখনো কোনো অর্ডার নেই।"; root.innerHTML = ""; return; }
+    const pharmacyIds = [...new Set(data.map(x=>x.pharmacy_id))];
+    const [{ data: pharmacyRows }, { data: itemRows, error: itemError }] = await Promise.all([
+      sb.from("pharmacies").select("id,pharmacy_name").in("id", pharmacyIds),
+      sb.from("order_items").select("order_id,name,unit,price,qty").in("order_id", data.map(x=>x.id))
+    ]);
+    if (itemError) console.warn("Order item details unavailable:", itemError.message);
+    const pnames = Object.fromEntries((pharmacyRows||[]).map(x=>[String(x.id),x.pharmacy_name]));
+    const itemsByOrder = {};
+    (itemRows||[]).forEach(item => (itemsByOrder[item.order_id] ||= []).push(item));
+    const steps = ["pending","accepted","processing","ready","assigned","picked_up","out_for_delivery","delivered"];
+    const labels = {pending:"ফার্মেসির অনুমোদনের অপেক্ষায়",accepted:"ফার্মেসি গ্রহণ করেছে",processing:"প্রস্তুত করা হচ্ছে",ready:"ডেলিভারির জন্য প্রস্তুত",rejected:"ফার্মেসি অর্ডার গ্রহণ করেনি",assigned:"Rider নিয়োগ হয়েছে",picked_up:"Rider সংগ্রহ করেছেন",out_for_delivery:"Rider পথে আছেন",delivered:"ডেলিভারি সম্পন্ন",cancelled:"বাতিল"};
+    root.innerHTML = data.map(o => {
+      const current = steps.indexOf(o.status);
+      const timeline = ["rejected","cancelled"].includes(o.status)
+        ? `<p class="tracking-terminal">${escapeHTML(labels[o.status])}</p>`
+        : `<ol class="order-timeline">${steps.map((step,i)=>`<li class="${current >= i ? "is-complete" : ""}"><span></span>${escapeHTML(labels[step])}</li>`).join("")}</ol>`;
+      const itemHtml = (itemsByOrder[o.id]||[]).map(it=>`<li>${escapeHTML(it.name)} — ${Number(it.qty)} ${escapeHTML(it.unit)} × ৳${Number(it.price).toFixed(2)}</li>`).join("");
+      return `<article class="customer-order-card"><div class="customer-order-head"><strong>Order #${escapeHTML(String(o.id).slice(0,8))}</strong><span class="order-status">${escapeHTML(labels[o.status]||o.status)}</span></div><p>${escapeHTML(pnames[String(o.pharmacy_id)]||"Pharmacy")} · ${escapeHTML(o.delivery_area)} · <strong>৳${Number(o.total).toFixed(2)}</strong></p><small>${new Date(o.created_at).toLocaleString()}</small><div class="order-tracking"><h3>ডেলিভারি ট্র্যাকিং</h3>${timeline}</div><details><summary>অর্ডারের বিস্তারিত</summary><ul>${itemHtml || "<li>পণ্যের বিস্তারিত পাওয়া যায়নি</li>"}</ul><p>পণ্যের মূল্য: ৳${Number(o.subtotal).toFixed(2)} · ডেলিভারি: ৳${Number(o.delivery_fee).toFixed(2)}</p><p>পেমেন্ট: ${escapeHTML(o.payment_method||"cod")} · ${escapeHTML(o.payment_status||"unpaid")}</p><pre>${escapeHTML(o.delivery_address||"")}</pre></details></article>`;
+    }).join("");
+    status.textContent = `${data.length}টি অর্ডার পাওয়া গেছে। সর্বশেষ অবস্থা দেখতে Refresh চাপুন।`;
+  }
+  document.getElementById("refreshCustomerOrders")?.addEventListener("click", () => window.loadCustomerOrders());
+  const riderForm = document.getElementById("riderApplicationForm");
+  window.loadRiderApplicationState = async function() {
+    const notice = document.getElementById("riderApplyNotice");
+    const existing = document.getElementById("riderExisting");
+    if (!currentUser) { riderForm.hidden=true; notice.textContent="Rider আবেদন করতে Login করুন।"; return; }
+    const {data,error}=await sb.from("rider_applications").select("full_name,status,created_at").eq("applicant_id",currentUser.id).order("created_at",{ascending:false}).limit(1);
+    if(error){notice.textContent="আবেদন অবস্থা লোড হয়নি: "+error.message;return;}
+    if(data?.length){riderForm.hidden=data[0].status==="pending"||data[0].status==="approved";existing.hidden=false;existing.textContent=`সর্বশেষ আবেদন: ${data[0].full_name} — ${data[0].status}`;}
+    else {riderForm.hidden=false; existing.hidden=true;}
+  }
+  riderForm?.addEventListener("submit",async e=>{
+    e.preventDefault(); const status=document.getElementById("riderApplyStatus");
+    if(!currentUser){status.textContent="আগে Login করুন।";return;}
+    const fd=new FormData(riderForm);
+    const payload={applicant_id:currentUser.id,full_name:String(fd.get("full_name")).trim(),phone:String(fd.get("phone")).trim(),area:String(fd.get("area")).trim(),address:String(fd.get("address")).trim(),id_reference:String(fd.get("id_reference")).trim(),status:"pending"};
+    const btn=document.getElementById("riderApplySubmit");btn.disabled=true;status.textContent="আবেদন জমা হচ্ছে…";
+    try{const {error}=await sb.from("rider_applications").insert(payload);if(error)throw error;riderForm.reset();status.textContent="আবেদন জমা হয়েছে। Admin যাচাই করবেন।";await window.loadRiderApplicationState?.();}
+    catch(err){status.textContent=err.message||"আবেদন জমা হয়নি।";}
+    finally{btn.disabled=false;}
+  });
+  if (location.hash === "#my-orders" && currentUser) window.loadCustomerOrders?.();
+  if (location.hash === "#rider-apply" && currentUser) window.loadRiderApplicationState?.();
+  window.loadRiderDeliveries = async function() {
+    const status=document.getElementById("riderDashboardStatus"), root=document.getElementById("riderDashboardOrders");
+    if(!currentUser || currentProfile?.role!=="rider" || currentProfile?.approved!==true){status.textContent="Rider access অনুমোদিত নয়।";return;}
+    status.textContent="আপনার Delivery লোড হচ্ছে…";
+    const {data,error}=await sb.from("orders").select("id,created_at,status,customer_name,customer_phone,delivery_area,delivery_address,note,total")
+      .eq("rider_id",currentUser.id).order("created_at",{ascending:false}).limit(100);
+    if(error){status.textContent="Delivery লোড হয়নি: "+error.message;return;}
+    const next={assigned:"picked_up",picked_up:"out_for_delivery",out_for_delivery:"delivered"};
+    const labels={assigned:"নতুন বরাদ্দ",picked_up:"প্যাকেট সংগ্রহ হয়েছে",out_for_delivery:"ডেলিভারি পথে",delivered:"সম্পন্ন"};
+    root.innerHTML=data.length?data.map(o=>`<article class="customer-order-card"><div class="customer-order-head"><strong>Order #${escapeHTML(String(o.id).slice(0,8))}</strong><span class="order-status">${labels[o.status]||o.status}</span></div><p>${escapeHTML(o.customer_name)} · ${escapeHTML(o.customer_phone)} · ${escapeHTML(o.delivery_area)} · ৳${Number(o.total).toFixed(2)}</p><details><summary>ডেলিভারি ঠিকানা</summary><pre>${escapeHTML(o.delivery_address||"")}</pre>${o.note?`<p>${escapeHTML(o.note)}</p>`:""}</details>${next[o.status]?`<button class="button" data-rider-next="${next[o.status]}" data-order-id="${o.id}">${next[o.status]==="picked_up"?"প্যাকেট সংগ্রহ করেছি":next[o.status]==="out_for_delivery"?"ডেলিভারি শুরু":"ডেলিভারি সম্পন্ন"}</button>`:""}</article>`).join(""):"এখনো কোনো Delivery বরাদ্দ করা হয়নি।";
+    status.textContent=`${data.length}টি Delivery পাওয়া গেছে।`;
+    root.querySelectorAll("[data-rider-next]").forEach(btn=>btn.addEventListener("click",async()=>{
+      btn.disabled=true;const nextStatus=btn.dataset.riderNext;
+      const allowed={picked_up:"assigned",out_for_delivery:"picked_up",delivered:"out_for_delivery"};
+      const {error:updateError}=await sb.from("orders").update({status:nextStatus,updated_at:new Date().toISOString()})
+        .eq("id",btn.dataset.orderId).eq("rider_id",currentUser.id).eq("status",allowed[nextStatus]);
+      if(updateError){toast(updateError.message,true);btn.disabled=false;return;}
+      await window.loadRiderDeliveries();
+    }));
+  };
+  window.loadAdminDeliveryQueue = async function(){
+    const root=document.getElementById("adminDeliveryOrders"); if(!root)return;
+    const [orders,riders]=await Promise.all([
+      sb.from("orders").select("id,created_at,status,customer_name,delivery_area,total,rider_id").in("status",["ready","assigned","picked_up","out_for_delivery"]).order("created_at",{ascending:false}).limit(100),
+      sb.from("profiles").select("id,full_name,phone").eq("role","rider").eq("approved",true)
+    ]);
+    if(orders.error)throw orders.error;if(riders.error)throw riders.error;
+    root.innerHTML=orders.data.length?orders.data.map(o=>`<article class="admin-application"><div><strong>Order #${escapeHTML(String(o.id).slice(0,8))}</strong><p>${escapeHTML(o.customer_name)} · ${escapeHTML(o.delivery_area)} · ৳${Number(o.total).toFixed(2)}<br>Status: ${escapeHTML(o.status)}</p></div><div class="admin-actions"><select data-assign-rider="${o.id}"><option value="">${o.rider_id?"Rider assigned":"Select approved Rider"}</option>${riders.data.map(r=>`<option value="${r.id}" ${r.id===o.rider_id?"selected":""}>${escapeHTML(r.full_name||r.phone||r.id)}</option>`).join("")}</select><button class="button button-primary" data-assign-save="${o.id}">Assign</button></div></article>`).join(""):"Ready বা চলমান কোনো Delivery নেই।";
+    root.querySelectorAll("[data-assign-save]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const select=root.querySelector(`[data-assign-rider="${btn.dataset.assignSave}"]`);
+      if(!select.value){toast("একজন অনুমোদিত Rider নির্বাচন করুন।",true);return;}
+      btn.disabled=true;
+      const {error}=await sb.from("orders").update({rider_id:select.value,status:"assigned",updated_at:new Date().toISOString()}).eq("id",btn.dataset.assignSave).eq("status","ready");
+      if(error){toast(error.message,true);btn.disabled=false;return;}
+      toast("Rider বরাদ্দ হয়েছে।");await window.loadAdminDeliveryQueue();
+    }));
+  };
   const pharmacyForm = document.getElementById("pharmacyApplicationForm");
   const pharmacyAuthNotice = document.getElementById("pharmacyApplyAuthNotice");
   const pharmacyExisting = document.getElementById("pharmacyApplicationExisting");
@@ -833,15 +960,36 @@ loadSheetData();
       if(e) toast(e.message,true); else await refreshInventory();
     }));
   }
+  async function refreshPharmacyOrders() {
+    if (!window.SM24_PHARMACY.isOwner()) throw new Error("Pharmacy owner permission required.");
+    const pid = currentProfile.pharmacy_id;
+    const { data, error } = await sb.from("orders")
+      .select("id,created_at,status,customer_name,customer_phone,delivery_area,delivery_address,note,subtotal,delivery_fee,total")
+      .eq("pharmacy_id", pid).order("created_at", {ascending:false}).limit(100);
+    if (error) throw error;
+    const node = document.getElementById("pharmacyOrdersList");
+    node.innerHTML = data.length ? data.map(o => `<article class="pharmacy-order-row">
+      <div><strong>Order ${escapeHTML(String(o.id).slice(0,8))}</strong><small>${escapeHTML(o.customer_name)} · ${escapeHTML(o.customer_phone)} · ${escapeHTML(o.delivery_area)} · ৳${Number(o.total).toFixed(2)}</small><small>Status: ${escapeHTML(o.status)}</small><details><summary>Delivery details</summary><pre>${escapeHTML(o.delivery_address || "")}</pre>${o.note ? `<p>${escapeHTML(o.note)}</p>` : ""}</details></div>
+      <div class="inventory-actions">${o.status === "pending" ? `<button class="button" data-order-action="accepted" data-order-id="${o.id}">Accept</button><button class="button button-secondary" data-order-action="rejected" data-order-id="${o.id}">Reject</button>` : ""}${o.status === "accepted" ? `<button class="button" data-order-action="processing" data-order-id="${o.id}">Processing</button>` : ""}${o.status === "processing" ? `<button class="button" data-order-action="ready" data-order-id="${o.id}">Ready</button>` : ""}</div>
+    </article>`).join("") : "এখনো কোনো অর্ডার আসেনি।";
+    node.querySelectorAll("[data-order-action]").forEach(btn => btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const { error: updateError } = await sb.from("orders").update({status:btn.dataset.orderAction, updated_at:new Date().toISOString()})
+        .eq("id",btn.dataset.orderId).eq("pharmacy_id",pid).eq("status",btn.dataset.orderAction === "accepted" || btn.dataset.orderAction === "rejected" ? "pending" : btn.dataset.orderAction === "processing" ? "accepted" : "processing");
+      if (updateError) { toast(updateError.message,true); btn.disabled=false; return; }
+      await refreshPharmacyOrders();
+    }));
+  }
   window.SM24_PHARMACY = {
     isOwner:()=>!!currentUser && currentProfile?.role==="pharmacy" && currentProfile?.approved===true && !!currentProfile?.pharmacy_id,
     showDenied:()=>toast("অনুমোদিত Pharmacy Owner Account দিয়ে Login করুন।",true),
     refresh:async()=>{
       const content=document.getElementById("pharmacyDashboardContent");
       if(!window.SM24_PHARMACY.isOwner()){content.hidden=true; pharmacyDashStatus.textContent="এই অংশ ব্যবহারের অনুমতি নেই।";return;}
-      content.hidden=false; pharmacyDashStatus.textContent="Pharmacy Owner হিসেবে প্রবেশ অনুমোদিত।"; await refreshInventory();
+      content.hidden=false; pharmacyDashStatus.textContent="Pharmacy Owner হিসেবে প্রবেশ অনুমোদিত।"; await refreshInventory(); await refreshPharmacyOrders();
     }
   };
+  document.getElementById("pharmacyOrdersRefresh")?.addEventListener("click",()=>refreshPharmacyOrders().catch(e=>toast(e.message,true)));
   inventoryForm?.addEventListener("submit",async e=>{
     e.preventDefault(); const status=document.getElementById("inventoryStatus");
     if(!window.SM24_PHARMACY.isOwner()){status.textContent="অনুমতি নেই।";return;}
@@ -852,6 +1000,62 @@ loadSheetData();
   });
   document.getElementById("inventoryCancel")?.addEventListener("click",resetInventoryForm);
   document.getElementById("inventoryRefresh")?.addEventListener("click",()=>refreshInventory().catch(e=>toast(e.message,true)));
+
+  window.loadAdminPaymentOrders = async function() {
+    const root = document.getElementById("adminPaymentOrders");
+    if (!root || !window.SM24_ADMIN?.isAdmin()) return;
+    root.textContent = "লোড হচ্ছে…";
+    const {data,error}=await sb.from("orders")
+      .select("id,created_at,status,customer_name,customer_phone,total,payment_method,payment_status")
+      .order("created_at",{ascending:false}).limit(100);
+    if(error){root.textContent="অর্ডার লোড করা যায়নি: "+error.message;return;}
+    if(!data.length){root.textContent="কোনো অর্ডার নেই।";return;}
+    root.innerHTML=data.map(o=>`<article class="admin-application"><div><strong>Order #${escapeHTML(String(o.id).slice(0,8))}</strong><p>${escapeHTML(o.customer_name)} · ${escapeHTML(o.customer_phone)} · ৳${Number(o.total).toFixed(2)}<br>Order: ${escapeHTML(o.status)} · Payment: ${escapeHTML(o.payment_status||"unpaid")}</p></div><div class="admin-actions"><select data-payment-state="${o.id}"><option value="unpaid" ${o.payment_status==="unpaid"?"selected":""}>Unpaid</option><option value="paid" ${o.payment_status==="paid"?"selected":""}>Paid</option><option value="refunded" ${o.payment_status==="refunded"?"selected":""}>Refunded</option></select><button class="button button-primary" data-payment-save="${o.id}">Save</button></div></article>`).join("");
+    root.querySelectorAll("[data-payment-save]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const select=root.querySelector(`[data-payment-state="${btn.dataset.paymentSave}"]`);
+      if(!select)return;
+      if(select.value==="paid" && !confirm("আপনি কি নিশ্চিত যে টাকা বাস্তবে গ্রহণ ও যাচাই করেছেন?"))return;
+      btn.disabled=true;
+      const {error:rpcError}=await sb.rpc("sm24_admin_set_payment_status",{p_order_id:btn.dataset.paymentSave,p_payment_status:select.value});
+      if(rpcError){toast(rpcError.message,true);btn.disabled=false;return;}
+      toast("Payment status updated.");
+      await window.loadAdminPaymentOrders();
+    }));
+  };
+
+  window.loadAdminDeliveryAreas = async function() {
+    const root=document.getElementById("adminDeliveryAreas");
+    if(!root || !window.SM24_ADMIN?.isAdmin()) return;
+    root.textContent="লোড হচ্ছে…";
+    const {data,error}=await sb.rpc("sm24_admin_list_delivery_areas");
+    if(error){root.textContent="Area list লোড করা যায়নি: "+error.message;return;}
+    if(!data?.length){root.textContent="কোনো Delivery Area নেই।";return;}
+    root.innerHTML=data.map(a=>`<article class="admin-application"><div><strong>${escapeHTML(a.area)}</strong><p>৳${Number(a.fee).toFixed(2)} · ${a.is_active?"Active":"Inactive"}</p></div><div class="admin-actions"><button class="button button-secondary" type="button" data-area-edit="${escapeHTML(a.area)}" data-area-fee="${a.fee}" data-area-active="${a.is_active}">Edit</button></div></article>`).join("");
+    root.querySelectorAll("[data-area-edit]").forEach(btn=>btn.addEventListener("click",()=>{
+      const form=document.getElementById("adminAreaForm");
+      form.elements.area.value=btn.dataset.areaEdit;
+      form.elements.fee.value=btn.dataset.areaFee;
+      form.elements.active.checked=btn.dataset.areaActive==="true";
+      form.scrollIntoView({behavior:"smooth",block:"center"});
+    }));
+  };
+  const adminAreaForm=document.getElementById("adminAreaForm");
+  adminAreaForm?.addEventListener("submit",async event=>{
+    event.preventDefault();
+    if(!window.SM24_ADMIN?.isAdmin()){window.SM24_ADMIN?.showDenied();return;}
+    const form=event.currentTarget;
+    const area=form.elements.area.value.trim();
+    const fee=Number(form.elements.fee.value);
+    const active=form.elements.active.checked;
+    if(!area || !Number.isFinite(fee) || fee<0 || fee>10000){toast("Area name বা fee সঠিক নয়।",true);return;}
+    const button=form.querySelector('button[type="submit"]');button.disabled=true;
+    const {error}=await sb.rpc("sm24_admin_set_delivery_area",{p_area:area,p_fee:fee,p_is_active:active});
+    button.disabled=false;
+    if(error){toast(error.message,true);return;}
+    toast("Delivery Area saved.");
+    form.reset();form.elements.active.checked=true;
+    await window.loadAdminDeliveryAreas();
+  });
 
   window.SM24_ADMIN = {
     isAdmin: () => !!currentUser && currentProfile?.role === "admin" && currentProfile?.approved === true,
@@ -864,15 +1068,19 @@ loadSheetData();
       const dash = document.getElementById("adminDashboard");
       if (!window.SM24_ADMIN.isAdmin()) { dash.hidden = true; statusEl.textContent = "এই অংশ ব্যবহারের অনুমতি নেই।"; return; }
       dash.hidden = false; statusEl.textContent = "Admin হিসেবে প্রবেশ অনুমোদিত।";
+      window.loadAdminPaymentOrders().catch(e=>console.warn("Payment queue:",e));
+      window.loadAdminDeliveryAreas().catch(e=>console.warn("Delivery areas:",e));
       const client = sb;
-      const [apps, customers, orders] = await Promise.all([
+      const [apps, customers, orders, riders] = await Promise.all([
         client.from("pharmacy_applications").select("id, pharmacy_name, owner_name, phone, area, address, license_number, license_file_url, status, created_at").order("created_at", {ascending:false}),
         client.from("profiles").select("id", {count:"exact", head:true}).eq("role","customer"),
-        client.from("orders").select("id", {count:"exact", head:true})
+        client.from("orders").select("id", {count:"exact", head:true}),
+        client.from("rider_applications").select("id,applicant_id,full_name,phone,area,address,id_reference,status,created_at").order("created_at",{ascending:false})
       ]);
       if (apps.error) throw apps.error;
       if (customers.error) throw customers.error;
       if (orders.error) throw orders.error;
+      if (riders.error) throw riders.error;
       document.getElementById("adminStats").innerHTML = [
         ["ফার্মেসি আবেদন", apps.data.length], ["Customer", customers.count ?? 0], ["মোট অর্ডার", orders.count ?? 0]
       ].map(([label,value]) => `<article class="admin-stat"><strong>${value}</strong><span>${label}</span></article>`).join("");
@@ -891,6 +1099,14 @@ loadSheetData();
           if (error) throw error;
           toast(btn.dataset.appAction === "approved" ? "ফার্মেসি অনুমোদিত হয়েছে এবং Pharmacy profile তৈরি হয়েছে।" : "আবেদন প্রত্যাখ্যান করা হয়েছে।"); await window.SM24_ADMIN.refresh();
         } catch(e) { toast(e.message || "Update failed", true); btn.disabled=false; }
+      }));
+      const riderRoot=document.getElementById("adminRiderApplications");
+      riderRoot.innerHTML = riders.data.length ? riders.data.map(r=>`<article class="admin-application"><div><h4>${escapeHTML(r.full_name)}</h4><p>ফোন: ${escapeHTML(r.phone)}<br>এলাকা: ${escapeHTML(r.area)}<br>ঠিকানা: ${escapeHTML(r.address)}<br>ID reference: ${escapeHTML(r.id_reference)}</p><small>স্ট্যাটাস: ${escapeHTML(r.status)}</small></div><div class="admin-actions">${r.status==="pending"?`<button class="button button-primary" data-rider-action="approved" data-rider-id="${r.id}">Approve</button><button class="button button-danger" data-rider-action="rejected" data-rider-id="${r.id}">Reject</button>`:""}</div></article>`).join(""):"কোনো Rider আবেদন নেই।";
+      await window.loadAdminDeliveryQueue();
+      riderRoot.querySelectorAll("[data-rider-action]").forEach(btn=>btn.addEventListener("click",async()=>{
+        btn.disabled=true;
+        try{const {error}=await client.from("rider_applications").update({status:btn.dataset.riderAction,reviewed_by:currentUser.id,reviewed_at:new Date().toISOString()}).eq("id",btn.dataset.riderId);if(error)throw error;await window.SM24_ADMIN.refresh();}
+        catch(e){toast(e.message||"Rider update failed",true);btn.disabled=false;}
       }));
     }
   };
@@ -998,3 +1214,15 @@ window.addEventListener("hashchange", () => {
 });
 
 window.addEventListener("hashchange",()=>{if(location.hash==="#pharmacy-dashboard")window.SM24_PHARMACY?.refresh().catch(e=>{const n=document.getElementById("pharmacyDashboardStatus");if(n)n.textContent=e.message||"Dashboard load failed.";});});
+
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#my-orders") window.loadCustomerOrders?.();
+  if (location.hash === "#rider-apply") window.loadRiderApplicationState?.();
+});
+
+document.getElementById("adminRiderRefresh")?.addEventListener("click",()=>window.SM24_ADMIN?.refresh().catch(e=>toast(e.message,true)));
+
+window.addEventListener("hashchange",()=>{if(location.hash==="#rider-dashboard")window.loadRiderDeliveries?.();if(location.hash==="#admin")window.loadAdminDeliveryQueue?.();});
+document.getElementById("adminDeliveryRefresh")?.addEventListener("click",()=>window.loadAdminDeliveryQueue?.().catch(e=>toast(e.message,true)));
+  document.getElementById("adminPaymentRefresh")?.addEventListener("click", () => window.loadAdminPaymentOrders());
+  document.getElementById("adminAreasRefresh")?.addEventListener("click", () => window.loadAdminDeliveryAreas());
