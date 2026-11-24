@@ -205,7 +205,18 @@
         <label id="authAreaWrap" hidden>Area<select id="authArea"><option value="">Select area</option><option>গোয়ালাবাজার</option><option>সরকার বাজার</option><option>আউশকান্দি</option></select></label>
         <button class="button button-primary auth-submit" id="authSubmit" type="submit">Login</button>
       </form>
-      <div id="authProfile" class="auth-profile" hidden><p id="authProfileName"></p><p id="authProfileEmail"></p></div>
+      <div id="authProfile" class="auth-profile" hidden>
+        <p id="authProfileName"></p>
+        <p id="authProfileEmail"></p>
+        <dl class="auth-profile-details" id="authProfileDetails">
+          <div><dt>Phone</dt><dd id="authProfilePhone">—</dd></div>
+          <div><dt>Area</dt><dd id="authProfileArea">—</dd></div>
+          <div><dt>Address</dt><dd id="authProfileAddress">—</dd></div>
+          <div><dt>Account type</dt><dd id="authProfileRole">Customer</dd></div>
+          <div><dt>Approval</dt><dd id="authProfileApproval">Pending</dd></div>
+        </dl>
+        <p id="authProfileLoadStatus" class="auth-profile-load-status" aria-live="polite"></p>
+      </div>
       <button id="authLogout" class="button auth-logout" type="button" hidden>Log out</button>
       <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
       <small>Demo stage: do not enter sensitive personal information.</small>
