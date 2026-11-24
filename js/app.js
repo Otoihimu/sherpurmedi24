@@ -380,7 +380,7 @@ async function loadSheetData() {
 loadSheetData();
 
 
-// ===== Supabase customer authentication (Phase 4A) =====
+// ===== Supabase customer authentication (professional account states) =====
 (() => {
   const cfg = window.SM24_CONFIG || {};
   const clientLib = window.supabase;
@@ -392,8 +392,10 @@ loadSheetData();
   const authForm = $id("authForm");
   const logoutBtn = $id("authLogout");
   const profile = $id("authProfile");
+  const tabsWrap = document.querySelector(".auth-tabs");
   const tabs = [...document.querySelectorAll("[data-auth-mode]")];
   let mode = "login";
+  let currentUser = null;
   let sb = null;
 
   if (clientLib && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY) {
@@ -429,31 +431,51 @@ loadSheetData();
     $id("authEmail").autocomplete = mode === "signup" ? "email" : "username";
     $id("authEmail").type = mode === "signup" ? "email" : "text";
     $id("authPassword").autocomplete = mode === "signup" ? "new-password" : "current-password";
-    $id("authTitle").textContent = mode === "signup" ? "Create customer account" : "Customer login";
-    $id("authMessage").textContent = mode === "signup" ? "Register with your email and password." : "Sign in with your email or phone number and password.";
+    $id("authTitle").textContent = mode === "signup" ? "Create your account" : "Welcome back";
+    $id("authMessage").textContent = mode === "signup" ? "Create an account to continue." : "Sign in to your SherpurMedi24 account.";
     $id("authSubmit").textContent = mode === "signup" ? "Create account" : "Login";
     tabs.forEach(t => t.classList.toggle("is-active", t.dataset.authMode === mode));
     say("");
   }
-  function show() { overlay.hidden = false; say(""); }
   function hide() { overlay.hidden = true; }
-  function updateSession(user) {
-    if (user) {
-      const name = user.user_metadata?.full_name || user.email || user.phone || "Account";
-      openBtn.textContent = name;
-      logoutBtn.hidden = false;
-      profile.hidden = false;
-      $id("authProfileName").textContent = name;
-      $id("authProfileEmail").textContent = user.email || user.phone || "";
-      $id("authMessage").textContent = "Your account is signed in.";
+  function show() {
+    overlay.hidden = false;
+    if (currentUser) {
       authForm.hidden = true;
-      tabs.forEach(t => t.hidden = true);
+      tabsWrap.hidden = true;
+      profile.hidden = false;
+      logoutBtn.hidden = false;
+      $id("authTitle").textContent = "Your account";
+      $id("authMessage").textContent = "You are signed in.";
+      say("");
+    } else {
+      authForm.hidden = false;
+      tabsWrap.hidden = false;
+      profile.hidden = true;
+      logoutBtn.hidden = true;
+      setMode("login");
+    }
+  }
+  function updateSession(user) {
+    currentUser = user || null;
+    if (currentUser) {
+      const name = currentUser.user_metadata?.full_name || currentUser.email || currentUser.phone || "My account";
+      openBtn.textContent = name;
+      $id("authProfileName").textContent = name;
+      $id("authProfileEmail").textContent = currentUser.email || currentUser.phone || "";
+      // A signed-in account never displays registration/login fields.
+      authForm.hidden = true;
+      tabsWrap.hidden = true;
+      profile.hidden = false;
+      logoutBtn.hidden = false;
+      $id("authTitle").textContent = "Your account";
+      $id("authMessage").textContent = "You are signed in.";
     } else {
       openBtn.textContent = "লগইন";
-      logoutBtn.hidden = true;
-      profile.hidden = true;
       authForm.hidden = false;
-      tabs.forEach(t => t.hidden = false);
+      tabsWrap.hidden = false;
+      profile.hidden = true;
+      logoutBtn.hidden = true;
       setMode("login");
     }
   }
@@ -489,7 +511,7 @@ loadSheetData();
           }}
         });
         if (result.error) throw result.error;
-        if (result.data.session) {
+        if (result.data.session && result.data.user) {
           updateSession(result.data.user);
           hide();
           showPage("home");
