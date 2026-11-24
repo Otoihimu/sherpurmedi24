@@ -38,6 +38,7 @@
         <a href="#pharmacies" data-route="pharmacies">ফার্মেসি</a>
         <a href="#how-it-works" data-route="how-it-works">কীভাবে কাজ করে</a>
         <a href="#about" data-route="about">আমাদের সম্পর্কে</a>
+        <a href="#admin" data-route="admin" id="adminNavLink" hidden>Admin Dashboard</a>
         <a class="nav-cta" href="#pharmacies" data-route="pharmacies">ফার্মেসি খুঁজুন</a>
       </nav>
     </div>
@@ -184,6 +185,18 @@
     </section>
     </div>
 
+  <section class="page-view" data-page="admin" id="page-admin" hidden>
+    <section class="section"><div class="container">
+      <div class="section-heading"><div><span class="eyebrow">OWNER CONTROL</span><h2>Admin Dashboard</h2><p>শুধু অনুমোদিত Admin এই অংশ ব্যবহার করতে পারবেন।</p></div></div>
+      <div id="adminStatus" class="admin-status" role="status">Admin permission যাচাই হচ্ছে…</div>
+      <div id="adminDashboard" hidden>
+        <div class="admin-stats" id="adminStats"></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Pharmacy Applications</h3><button class="button button-secondary" id="adminRefresh" type="button">Refresh</button></div>
+          <div id="adminApplications">লোড হচ্ছে…</div>
+        </div>
+      </div>
+    </div></section>
+  </section>
   </main>
 
   <a class="cart-fab" id="cartFab" href="#cart" data-route="cart"><span aria-hidden="true">🛒</span><span class="cart-label">কার্ট</span><span class="cart-count" hidden>0</span></a>
