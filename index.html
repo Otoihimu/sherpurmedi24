@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/app.js" defer></script>
 </head>
@@ -27,6 +28,7 @@
       </a>
 
       <label class="language-control" aria-label="Language selector"><span aria-hidden="true">🌐</span><select id="languageSelect" aria-label="Select language"><option value="bn">বাংলা</option><option value="en">English</option></select></label>
+      <button class="button button-primary" id="accountOpen" type="button">লগইন</button>
       <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="mainNav" aria-label="মেনু খুলুন">
         <span></span><span></span><span></span>
       </button>
@@ -185,6 +187,29 @@
   </main>
 
   <a class="cart-fab" id="cartFab" href="#cart" data-route="cart"><span aria-hidden="true">🛒</span><span class="cart-label">কার্ট</span><span class="cart-count" hidden>0</span></a>
+
+  <section class="auth-overlay" id="authOverlay" hidden aria-label="Account">
+    <div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <button class="auth-close" id="authClose" type="button" aria-label="Close">×</button>
+      <h2 id="authTitle">Customer account</h2>
+      <p id="authMessage">Create an account or sign in.</p>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab is-active" data-auth-mode="login">Login</button>
+        <button type="button" class="auth-tab" data-auth-mode="signup">Register</button>
+      </div>
+      <form id="authForm">
+        <label id="authNameWrap" hidden>Full name<input id="authName" autocomplete="name"></label>
+        <label>Email<input id="authEmail" type="email" required autocomplete="email"></label>
+        <label>Password<input id="authPassword" type="password" required minlength="6" autocomplete="current-password"></label>
+        <label id="authPhoneWrap" hidden>Phone number<input id="authPhone" type="tel" autocomplete="tel"></label>
+        <label id="authAreaWrap" hidden>Area<select id="authArea"><option value="">Select area</option><option>গোয়ালাবাজার</option><option>সরকার বাজার</option><option>আউশকান্দি</option></select></label>
+        <button class="button button-primary auth-submit" id="authSubmit" type="submit">Login</button>
+      </form>
+      <button id="authLogout" class="cart-clear" type="button" hidden>Logout</button>
+      <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
+      <small>Demo stage: do not enter sensitive personal information.</small>
+    </div>
+  </section>
 
   <footer class="site-footer">
     <div class="container footer-inner">
