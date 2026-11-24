@@ -380,56 +380,49 @@ async function loadSheetData() {
 loadSheetData();
 
 
-// ===== Supabase customer authentication (professional account states) =====
+// ===== Supabase customer authentication (corrected account states) =====
 (() => {
   const cfg = window.SM24_CONFIG || {};
   const clientLib = window.supabase;
   const openBtn = document.getElementById("accountOpen");
   const overlay = document.getElementById("authOverlay");
   if (!openBtn || !overlay) return;
-  const $id = (id) => document.getElementById(id);
-  const status = $id("authStatus");
+  const $id = id => document.getElementById(id);
   const authForm = $id("authForm");
-  const logoutBtn = $id("authLogout");
-  const profile = $id("authProfile");
   const tabsWrap = document.querySelector(".auth-tabs");
   const tabs = [...document.querySelectorAll("[data-auth-mode]")];
-  let mode = "login";
-  let currentUser = null;
-  let sb = null;
+  const profile = $id("authProfile");
+  const logoutBtn = $id("authLogout");
+  const status = $id("authStatus");
+  let mode = "login", currentUser = null, sessionReady = false, sb = null;
 
   if (clientLib && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY) {
     sb = clientLib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
   }
   function say(message, isError = false) {
-    status.textContent = message;
+    status.textContent = message || "";
     status.style.color = isError ? "#a23333" : "#087b43";
   }
   function toast(message, isError = false) {
-    let node = document.getElementById("sm24Toast");
+    let node = $id("sm24Toast");
     if (!node) {
-      node = document.createElement("div");
-      node.id = "sm24Toast";
-      node.className = "sm24-toast";
-      node.setAttribute("role", "status");
-      node.setAttribute("aria-live", "polite");
-      document.body.appendChild(node);
+      node = document.createElement("div"); node.id = "sm24Toast";
+      node.className = "sm24-toast"; node.setAttribute("role", "status");
+      node.setAttribute("aria-live", "polite"); document.body.appendChild(node);
     }
-    node.textContent = message;
-    node.classList.toggle("is-error", isError);
-    node.classList.add("is-visible");
-    window.clearTimeout(toast.timer);
-    toast.timer = window.setTimeout(() => node.classList.remove("is-visible"), 4200);
+    node.textContent = message; node.classList.toggle("is-error", isError);
+    node.classList.add("is-visible"); clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => node.classList.remove("is-visible"), 4200);
   }
   function setMode(next) {
-    mode = next;
+    mode = next === "signup" ? "signup" : "login";
     $id("authNameWrap").hidden = mode !== "signup";
     $id("authPhoneWrap").hidden = mode !== "signup";
     $id("authAreaWrap").hidden = mode !== "signup";
-    $id("authIdentifierLabel").textContent = mode === "signup" ? "Email address" : "Email or phone number";
+    $id("authIdentifierText").textContent = mode === "signup" ? "Email address" : "Email or phone number";
     $id("authEmail").placeholder = mode === "signup" ? "name@example.com" : "Email or phone number";
-    $id("authEmail").autocomplete = mode === "signup" ? "email" : "username";
     $id("authEmail").type = mode === "signup" ? "email" : "text";
+    $id("authEmail").autocomplete = mode === "signup" ? "email" : "username";
     $id("authPassword").autocomplete = mode === "signup" ? "new-password" : "current-password";
     $id("authTitle").textContent = mode === "signup" ? "Create your account" : "Welcome back";
     $id("authMessage").textContent = mode === "signup" ? "Create an account to continue." : "Sign in to your SherpurMedi24 account.";
@@ -438,54 +431,46 @@ loadSheetData();
     say("");
   }
   function hide() { overlay.hidden = true; }
-  function show() {
-    overlay.hidden = false;
-    if (currentUser) {
-      authForm.hidden = true;
-      tabsWrap.hidden = true;
-      profile.hidden = false;
-      logoutBtn.hidden = false;
-      $id("authTitle").textContent = "Your account";
-      $id("authMessage").textContent = "You are signed in.";
-      say("");
-    } else {
-      authForm.hidden = false;
-      tabsWrap.hidden = false;
-      profile.hidden = true;
-      logoutBtn.hidden = true;
-      setMode("login");
-    }
-  }
-  function updateSession(user) {
-    currentUser = user || null;
-    if (currentUser) {
+  function renderAccountState() {
+    const signedIn = !!currentUser;
+    authForm.hidden = signedIn;
+    tabsWrap.hidden = signedIn;
+    profile.hidden = !signedIn;
+    logoutBtn.hidden = !signedIn;
+    if (signedIn) {
       const name = currentUser.user_metadata?.full_name || currentUser.email || currentUser.phone || "My account";
       openBtn.textContent = name;
-      $id("authProfileName").textContent = name;
-      $id("authProfileEmail").textContent = currentUser.email || currentUser.phone || "";
-      // A signed-in account never displays registration/login fields.
-      authForm.hidden = true;
-      tabsWrap.hidden = true;
-      profile.hidden = false;
-      logoutBtn.hidden = false;
       $id("authTitle").textContent = "Your account";
       $id("authMessage").textContent = "You are signed in.";
+      $id("authProfileName").textContent = name;
+      $id("authProfileEmail").textContent = currentUser.email || currentUser.phone || "";
+      say("");
     } else {
       openBtn.textContent = "লগইন";
-      authForm.hidden = false;
-      tabsWrap.hidden = false;
-      profile.hidden = true;
-      logoutBtn.hidden = true;
-      setMode("login");
+      setMode(mode);
     }
+  }
+  function show() {
+    overlay.hidden = false;
+    if (!sessionReady) {
+      authForm.hidden = true; tabsWrap.hidden = true; profile.hidden = true; logoutBtn.hidden = true;
+      $id("authTitle").textContent = "Checking your account…";
+      $id("authMessage").textContent = "Please wait a moment.";
+      return;
+    }
+    renderAccountState();
   }
   openBtn.addEventListener("click", show);
   $id("authClose").addEventListener("click", hide);
   overlay.addEventListener("click", e => { if (e.target === overlay) hide(); });
-  tabs.forEach(t => t.addEventListener("click", () => setMode(t.dataset.authMode)));
+  tabs.forEach(t => t.addEventListener("click", () => {
+    if (currentUser) return;
+    setMode(t.dataset.authMode);
+  }));
 
   if (!sb) {
     openBtn.addEventListener("click", () => say("Supabase configuration or client library is missing.", true));
+    sessionReady = true;
     return;
   }
 
@@ -494,8 +479,8 @@ loadSheetData();
     const identifier = $id("authEmail").value.trim();
     const password = $id("authPassword").value;
     const submit = $id("authSubmit");
-    submit.disabled = true;
-    say(mode === "signup" ? "Creating account..." : "Signing in...");
+    if (!identifier || !password) { say("Email/phone and password are required.", true); return; }
+    submit.disabled = true; say(mode === "signup" ? "Creating account…" : "Signing in…");
     try {
       let result;
       if (mode === "signup") {
@@ -503,57 +488,46 @@ loadSheetData();
         if (!full_name) throw new Error("Please enter your name.");
         result = await sb.auth.signUp({
           email: identifier, password,
-          options: { data: {
-            full_name,
-            phone: $id("authPhone").value.trim(),
-            area: $id("authArea").value,
-            requested_role: "customer"
-          }}
+          options: { data: { full_name, phone: $id("authPhone").value.trim(), area: $id("authArea").value } }
         });
         if (result.error) throw result.error;
         if (result.data.session && result.data.user) {
-          updateSession(result.data.user);
-          hide();
-          showPage("home");
-          toast("রেজিস্ট্রেশন সফল হয়েছে। SherpurMedi24-এ স্বাগতম!");
+          currentUser = result.data.user; renderAccountState(); hide();
+          if (typeof showPage === "function") showPage("home");
+          toast("রেজিস্ট্রেশন সফল হয়েছে। স্বাগতম!");
         } else {
-          hide();
-          showPage("home");
-          toast("রেজিস্ট্রেশন সম্পন্ন হয়েছে। লগইনের আগে ইমেইল যাচাই করুন।");
+          hide(); if (typeof showPage === "function") showPage("home");
+          toast("রেজিস্ট্রেশন হয়েছে। লগইনের আগে ইমেইল যাচাই করুন।");
         }
       } else {
         const isEmail = identifier.includes("@");
-        result = await sb.auth.signInWithPassword(isEmail
-          ? { email: identifier, password }
-          : { phone: identifier, password });
+        result = await sb.auth.signInWithPassword(isEmail ? { email: identifier, password } : { phone: identifier, password });
         if (result.error) throw result.error;
-        updateSession(result.data.user);
-        hide();
-        showPage("home");
+        currentUser = result.data.user; renderAccountState(); hide();
+        if (typeof showPage === "function") showPage("home");
         toast("লগইন সফল হয়েছে। স্বাগতম!");
       }
-    } catch (err) {
-      say(err.message || "Authentication failed.", true);
-    } finally {
-      submit.disabled = false;
-    }
+    } catch (err) { say(err.message || "Authentication failed.", true); }
+    finally { submit.disabled = false; }
   });
   logoutBtn.addEventListener("click", async () => {
     logoutBtn.disabled = true;
-    const { error } = await sb.auth.signOut();
-    logoutBtn.disabled = false;
-    if (error) say(error.message, true);
-    else {
-      updateSession(null);
-      hide();
-      showPage("home");
+    try {
+      const { error } = await sb.auth.signOut();
+      if (error) throw error;
+      currentUser = null; renderAccountState(); hide();
+      if (typeof showPage === "function") showPage("home");
       toast("আপনি সফলভাবে লগআউট করেছেন।");
-    }
+    } catch (err) { say(err.message || "Could not log out.", true); }
+    finally { logoutBtn.disabled = false; }
   });
   sb.auth.getSession().then(({ data, error }) => {
     if (error) say(error.message, true);
-    updateSession(data.session?.user || null);
+    currentUser = data.session?.user || null; sessionReady = true; renderAccountState();
+    if (!currentUser && !overlay.hidden) renderAccountState();
   });
-  sb.auth.onAuthStateChange((_event, session) => updateSession(session?.user || null));
+  sb.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null; sessionReady = true; renderAccountState();
+  });
   setMode("login");
 })();
