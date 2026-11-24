@@ -395,6 +395,7 @@ loadSheetData();
   const logoutBtn = $id("authLogout");
   const status = $id("authStatus");
   let mode = "login", currentUser = null, currentProfile = null, sessionReady = false, sb = null;
+  let savedAddresses = [], editingAddressId = null;
 
   if (clientLib && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY) {
     sb = clientLib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
@@ -451,6 +452,7 @@ loadSheetData();
       const role = currentProfile?.role || "customer";
       $id("authProfileRole").textContent = role === "customer" ? "Customer" : role;
       $id("authProfileApproval").textContent = currentProfile ? (currentProfile.approved ? "Approved" : "Pending approval") : "Not loaded";
+      renderSavedAddresses();
       say("");
     } else {
       currentProfile = null;
@@ -458,6 +460,116 @@ loadSheetData();
       setMode(mode);
     }
   }
+  const addressFields = ["addressLabel", "addressRecipient", "addressPhone", "addressArea", "addressVillage", "addressHouse", "addressLandmark", "addressNote", "addressDefault"];
+  function addressStatus(message, isError = false) {
+    const node = $id("addressStatus");
+    if (node) { node.textContent = message || ""; node.style.color = isError ? "#a23333" : "#087b43"; }
+  }
+  function resetAddressForm() {
+    editingAddressId = null;
+    $id("addressForm").reset();
+    $id("addressFormTitle").textContent = "Add a delivery address";
+    $id("addressSave").textContent = "Save address";
+    $id("addressCancel").hidden = true;
+    addressStatus("");
+  }
+  function renderSavedAddresses() {
+    const list = $id("addressList");
+    if (!list) return;
+    $id("addressCount").textContent = `${savedAddresses.length}/5`;
+    if (!savedAddresses.length) {
+      list.innerHTML = '<p class="address-empty">No saved delivery addresses yet. Add your Home address below.</p>';
+    } else {
+      list.innerHTML = savedAddresses.map(a => `
+        <article class="address-card ${a.is_default ? "is-default" : ""}">
+          <div class="address-card-top"><span class="address-card-title">${escapeHTML(a.label)}</span>${a.is_default ? '<span class="address-default-tag">DEFAULT</span>' : ""}</div>
+          <p><strong>${escapeHTML(a.recipient_name)}</strong> · ${escapeHTML(a.phone)}<br>${escapeHTML(a.area)}, ${escapeHTML(a.village_road)}<br>${escapeHTML(a.house_building)}${a.landmark ? `<br>Landmark: ${escapeHTML(a.landmark)}` : ""}${a.delivery_note ? `<br>Note: ${escapeHTML(a.delivery_note)}` : ""}</p>
+          <div class="address-card-actions">
+            <button type="button" data-address-edit="${a.id}">Edit</button>
+            ${a.is_default ? "" : `<button type="button" data-address-default="${a.id}">Make default</button>`}
+            <button type="button" class="address-delete" data-address-delete="${a.id}">Delete</button>
+          </div>
+        </article>`).join("");
+    }
+    const limitReached = savedAddresses.length >= 5 && !editingAddressId;
+    $id("addressForm").hidden = limitReached;
+    if (limitReached) addressStatus("You can save up to 5 addresses.");
+  }
+  async function loadSavedAddresses() {
+    if (!currentUser || !sb) return;
+    const { data, error } = await sb.from("customer_addresses").select("id, label, recipient_name, phone, area, village_road, house_building, landmark, delivery_note, is_default, created_at").eq("user_id", currentUser.id).order("is_default", { ascending: false }).order("created_at", { ascending: false });
+    if (error) { addressStatus("Address storage is not ready yet. Run the Phase 4C SQL setup first.", true); console.warn("Address load failed:", error.message); return; }
+    savedAddresses = data || [];
+    renderSavedAddresses();
+  }
+  function editSavedAddress(id) {
+    const a = savedAddresses.find(x => x.id === id); if (!a) return;
+    editingAddressId = id;
+    $id("addressLabel").value = a.label;
+    $id("addressRecipient").value = a.recipient_name;
+    $id("addressPhone").value = a.phone;
+    $id("addressArea").value = a.area;
+    $id("addressVillage").value = a.village_road;
+    $id("addressHouse").value = a.house_building;
+    $id("addressLandmark").value = a.landmark || "";
+    $id("addressNote").value = a.delivery_note || "";
+    $id("addressDefault").checked = !!a.is_default;
+    $id("addressFormTitle").textContent = "Edit delivery address";
+    $id("addressSave").textContent = "Update address";
+    $id("addressCancel").hidden = false;
+    $id("addressForm").hidden = false;
+    $id("addressForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  async function makeAddressDefault(id) {
+    if (!currentUser) return;
+    const { error: clearError } = await sb.from("customer_addresses").update({ is_default: false }).eq("user_id", currentUser.id);
+    if (clearError) { addressStatus(clearError.message, true); return; }
+    const { error } = await sb.from("customer_addresses").update({ is_default: true }).eq("id", id).eq("user_id", currentUser.id);
+    if (error) addressStatus(error.message, true); else { addressStatus("Default address updated."); await loadSavedAddresses(); }
+  }
+  async function deleteSavedAddress(id) {
+    if (!currentUser || !confirm("Delete this saved address?")) return;
+    const { error } = await sb.from("customer_addresses").delete().eq("id", id).eq("user_id", currentUser.id);
+    if (error) addressStatus(error.message, true); else { addressStatus("Address deleted."); await loadSavedAddresses(); if (editingAddressId === id) resetAddressForm(); }
+  }
+  $id("addressForm").addEventListener("submit", async e => {
+    e.preventDefault(); if (!currentUser) return;
+    const save = $id("addressSave"); save.disabled = true; addressStatus(editingAddressId ? "Updating address…" : "Saving address…");
+    const payload = {
+      user_id: currentUser.id,
+      label: $id("addressLabel").value,
+      recipient_name: $id("addressRecipient").value.trim(),
+      phone: $id("addressPhone").value.trim(),
+      area: $id("addressArea").value,
+      village_road: $id("addressVillage").value.trim(),
+      house_building: $id("addressHouse").value.trim(),
+      landmark: $id("addressLandmark").value.trim() || null,
+      delivery_note: $id("addressNote").value.trim() || null,
+      is_default: $id("addressDefault").checked || savedAddresses.length === 0
+    };
+    try {
+      if (payload.is_default) {
+        const { error: clearError } = await sb.from("customer_addresses").update({ is_default: false }).eq("user_id", currentUser.id);
+        if (clearError) throw clearError;
+      }
+      const result = editingAddressId
+        ? await sb.from("customer_addresses").update(payload).eq("id", editingAddressId).eq("user_id", currentUser.id)
+        : await sb.from("customer_addresses").insert(payload);
+      if (result.error) throw result.error;
+      resetAddressForm(); addressStatus("Address saved successfully."); await loadSavedAddresses();
+    } catch (err) { addressStatus(err.message || "Could not save address.", true); }
+    finally { save.disabled = false; }
+  });
+  $id("addressCancel").addEventListener("click", resetAddressForm);
+  $id("addressList").addEventListener("click", e => {
+    const edit = e.target.closest("[data-address-edit]");
+    const def = e.target.closest("[data-address-default]");
+    const del = e.target.closest("[data-address-delete]");
+    if (edit) editSavedAddress(edit.dataset.addressEdit);
+    if (def) makeAddressDefault(def.dataset.addressDefault);
+    if (del) deleteSavedAddress(del.dataset.addressDelete);
+  });
+
   async function loadCurrentProfile(user) {
     if (!user || !sb) { currentProfile = null; return; }
     const statusNode = $id("authProfileLoadStatus");
@@ -474,7 +586,7 @@ loadSheetData();
       if (statusNode) statusNode.textContent = "Database profile could not be loaded; showing account details available from sign-in.";
       console.warn("Profile load failed:", err.message || err);
     }
-    if (currentUser?.id === user.id) renderAccountState();
+    if (currentUser?.id === user.id) { renderAccountState(); await loadSavedAddresses(); }
   }
   function show() {
     overlay.hidden = false;
@@ -541,7 +653,7 @@ loadSheetData();
     try {
       const { error } = await sb.auth.signOut();
       if (error) throw error;
-      currentUser = null; currentProfile = null; renderAccountState(); hide();
+      currentUser = null; currentProfile = null; savedAddresses = []; resetAddressForm(); renderAccountState(); hide();
       if (typeof showPage === "function") showPage("home");
       toast("আপনি সফলভাবে লগআউট করেছেন।");
     } catch (err) { say(err.message || "Could not log out.", true); }
