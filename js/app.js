@@ -388,10 +388,12 @@ async function loadLivePharmacyInventory() {
   if (!window.supabase || !cfg.SUPABASE_URL || !cfg.SUPABASE_PUBLISHABLE_KEY) return [];
   const client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
   const { data, error } = await client.from("pharmacy_inventory")
-    .select("id, pharmacy_id, name, generic_name, unit, price, stock_qty, is_available")
+    .select("id, pharmacy_id, name, generic_name, unit, price, stock_qty, is_available, expiry_date")
     .eq("is_available", true).gt("stock_qty", 0).order("name");
   if (error) { console.warn("Live inventory unavailable:", error.message); return []; }
-  return (data || []).map(x => ({
+  const today = new Date(); today.setHours(0,0,0,0);
+  const sellable = (data || []).filter(x => !x.expiry_date || new Date(x.expiry_date + "T00:00:00") > today);
+  return sellable.map(x => ({
     id: x.id, pharmacy_id: String(x.pharmacy_id), name: x.name,
     generic: x.generic_name || "", unit: x.unit, price: Number(x.price),
     stock_qty: Number(x.stock_qty), in_stock: Number(x.stock_qty) > 0,
@@ -946,12 +948,24 @@ loadSheetData();
   async function refreshInventory() {
     if (!window.SM24_PHARMACY.isOwner()) throw new Error("Pharmacy owner permission required.");
     const pid = currentProfile.pharmacy_id;
-    const {data,error} = await sb.from("pharmacy_inventory").select("id,pharmacy_id,name,generic_name,unit,price,stock_qty,is_available").eq("pharmacy_id",pid).order("name");
+    const {data,error} = await sb.from("pharmacy_inventory").select("id,pharmacy_id,name,generic_name,unit,price,stock_qty,is_available,low_stock_threshold,expiry_date").eq("pharmacy_id",pid).order("name");
     if (error) throw error;
-    inventoryList.innerHTML = data.length ? data.map(x => `<div class="inventory-row"><div><strong>${escapeHTML(x.name)}</strong><small>${escapeHTML(x.generic_name || "")} · ${escapeHTML(x.unit)} · ৳${Number(x.price).toFixed(2)} · Stock: ${x.stock_qty} · ${x.is_available ? "Available" : "Unavailable"}</small></div><div class="inventory-actions"><button class="button button-secondary" data-edit="${x.id}">Edit</button><button class="button button-secondary" data-delete="${x.id}">Delete</button></div></div>`).join("") : "এখনো কোনো ওষুধ যোগ করা হয়নি।";
+    const today=new Date(); today.setHours(0,0,0,0);
+    const lowStock=data.filter(x=>Number(x.stock_qty)<=Number(x.low_stock_threshold??5));
+    const expiryAlerts=data.filter(x=>x.expiry_date && new Date(x.expiry_date+"T00:00:00")<=new Date(today.getTime()+90*86400000));
+    const lowNode=document.getElementById("inventoryLowStockSummary");
+    if(lowNode)lowNode.textContent=`Low stock: ${lowStock.length}টি · Expiry alert (আগামী ৯০ দিন/মেয়াদ শেষ): ${expiryAlerts.length}টি`;
+    inventoryList.innerHTML = data.length ? data.map(x => {
+      const low=Number(x.stock_qty)<=Number(x.low_stock_threshold??5);
+      const expiry=x.expiry_date?new Date(x.expiry_date+"T00:00:00"):null;
+      const expired=expiry && expiry<today;
+      const expiring=expiry && !expired && expiry<=new Date(today.getTime()+90*86400000);
+      const expiryLabel=expired?"Expired":expiring?"Expiry soon":"";
+      return `<div class="inventory-row ${low?"inventory-low-stock":""} ${expired?"inventory-expired":""}"><div><strong>${escapeHTML(x.name)} ${low?'<span class="low-stock-badge">Low stock</span>':""} ${expiryLabel?`<span class="expiry-badge">${expiryLabel}</span>`:""}</strong><small>${escapeHTML(x.generic_name || "")} · ${escapeHTML(x.unit)} · ৳${Number(x.price).toFixed(2)} · Stock: ${x.stock_qty} · Alert at: ${x.low_stock_threshold??5} · Expiry: ${x.expiry_date||"Not set"} · ${x.is_available ? "Available" : "Unavailable"}</small></div><div class="inventory-actions"><button class="button button-secondary" data-edit="${x.id}">Edit</button><button class="button button-secondary" data-delete="${x.id}">Delete</button></div></div>`;
+    }).join("") : "এখনো কোনো ওষুধ যোগ করা হয়নি।";
     inventoryList.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => {
       const x=data.find(y=>String(y.id)===b.dataset.edit); if(!x)return;
-      ["name","generic_name","unit","price","stock_qty","is_available"].forEach(k=>{if(inventoryForm.elements[k].type==="checkbox") inventoryForm.elements[k].checked=!!x[k]; else inventoryForm.elements[k].value=x[k] ?? "";});
+      ["name","generic_name","unit","price","stock_qty","low_stock_threshold","expiry_date","is_available"].forEach(k=>{if(inventoryForm.elements[k].type==="checkbox") inventoryForm.elements[k].checked=!!x[k]; else inventoryForm.elements[k].value=x[k] ?? "";});
       inventoryForm.elements.id.value=x.id; document.getElementById("inventoryCancel").hidden=false; document.getElementById("inventorySave").textContent="Update medicine";
     }));
     inventoryList.querySelectorAll("[data-delete]").forEach(b => b.addEventListener("click", async()=>{
@@ -960,23 +974,81 @@ loadSheetData();
       if(e) toast(e.message,true); else await refreshInventory();
     }));
   }
+  async function refreshStockHistory() {
+    const status = document.getElementById("stockHistoryStatus");
+    const list = document.getElementById("stockHistoryList");
+    if (!window.SM24_PHARMACY.isOwner()) throw new Error("Pharmacy owner permission required.");
+    if (status) status.textContent = "Stock history লোড হচ্ছে…";
+    const pid = currentProfile.pharmacy_id;
+    const { data, error } = await sb.from("sm24_stock_movements")
+      .select("id,inventory_id,medicine_name,movement_type,old_stock,new_stock,quantity_change,actor_id,occurred_at")
+      .eq("pharmacy_id", pid).order("occurred_at", { ascending: false }).limit(100);
+    if (error) throw error;
+    const labels = { stock_added: "নতুন inventory", stock_changed: "Stock পরিবর্তন", stock_removed: "Inventory মুছে ফেলা" };
+    if (!data.length) {
+      if (status) status.textContent = "এখনো কোনো stock movement রেকর্ড নেই। Phase 6Q SQL ইনস্টল করার পর stock পরিবর্তন করুন।";
+      if (list) list.innerHTML = "";
+      return;
+    }
+    if (status) status.textContent = `মোট ${data.length}টি সাম্প্রতিক রেকর্ড দেখানো হচ্ছে (সর্বোচ্চ ১০০টি)।`;
+    if (list) list.innerHTML = data.map(row => {
+      const change = row.quantity_change == null ? "—" : `${Number(row.quantity_change) > 0 ? "+" : ""}${row.quantity_change}`;
+      const before = row.old_stock == null ? "—" : row.old_stock;
+      const after = row.new_stock == null ? "—" : row.new_stock;
+      return `<article class="inventory-row"><div><strong>${escapeHTML(row.medicine_name || "Unknown medicine")}</strong><small>${escapeHTML(labels[row.movement_type] || row.movement_type)} · আগের stock: ${before} · নতুন stock: ${after} · পরিবর্তন: ${change}</small><small>${new Date(row.occurred_at).toLocaleString()} · Actor: ${escapeHTML(row.actor_id || "System/unknown")}</small></div></article>`;
+    }).join("");
+  }
+  let pharmacyOrdersCache = [];
   async function refreshPharmacyOrders() {
     if (!window.SM24_PHARMACY.isOwner()) throw new Error("Pharmacy owner permission required.");
     const pid = currentProfile.pharmacy_id;
     const { data, error } = await sb.from("orders")
-      .select("id,created_at,status,customer_name,customer_phone,delivery_area,delivery_address,note,subtotal,delivery_fee,total")
-      .eq("pharmacy_id", pid).order("created_at", {ascending:false}).limit(100);
+      .select("id,created_at,status,customer_name,customer_phone,delivery_area,delivery_address,note,subtotal,delivery_fee,total,payment_method,payment_status")
+      .eq("pharmacy_id", pid).order("created_at", {ascending:false}).limit(200);
     if (error) throw error;
-    const node = document.getElementById("pharmacyOrdersList");
-    node.innerHTML = data.length ? data.map(o => `<article class="pharmacy-order-row">
-      <div><strong>Order ${escapeHTML(String(o.id).slice(0,8))}</strong><small>${escapeHTML(o.customer_name)} · ${escapeHTML(o.customer_phone)} · ${escapeHTML(o.delivery_area)} · ৳${Number(o.total).toFixed(2)}</small><small>Status: ${escapeHTML(o.status)}</small><details><summary>Delivery details</summary><pre>${escapeHTML(o.delivery_address || "")}</pre>${o.note ? `<p>${escapeHTML(o.note)}</p>` : ""}</details></div>
-      <div class="inventory-actions">${o.status === "pending" ? `<button class="button" data-order-action="accepted" data-order-id="${o.id}">Accept</button><button class="button button-secondary" data-order-action="rejected" data-order-id="${o.id}">Reject</button>` : ""}${o.status === "accepted" ? `<button class="button" data-order-action="processing" data-order-id="${o.id}">Processing</button>` : ""}${o.status === "processing" ? `<button class="button" data-order-action="ready" data-order-id="${o.id}">Ready</button>` : ""}</div>
-    </article>`).join("") : "এখনো কোনো অর্ডার আসেনি।";
-    node.querySelectorAll("[data-order-action]").forEach(btn => btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      const { error: updateError } = await sb.from("orders").update({status:btn.dataset.orderAction, updated_at:new Date().toISOString()})
-        .eq("id",btn.dataset.orderId).eq("pharmacy_id",pid).eq("status",btn.dataset.orderAction === "accepted" || btn.dataset.orderAction === "rejected" ? "pending" : btn.dataset.orderAction === "processing" ? "accepted" : "processing");
-      if (updateError) { toast(updateError.message,true); btn.disabled=false; return; }
+    pharmacyOrdersCache = data || [];
+    const orderStats = {
+      total: pharmacyOrdersCache.length,
+      pending: pharmacyOrdersCache.filter(o=>o.status==="pending").length,
+      active: pharmacyOrdersCache.filter(o=>["accepted","processing","ready","assigned","picked_up","out_for_delivery"].includes(o.status)).length,
+      delivered: pharmacyOrdersCache.filter(o=>o.status==="delivered").length,
+      deliveredValue: pharmacyOrdersCache.filter(o=>o.status==="delivered").reduce((sum,o)=>sum+Number(o.total||0),0)
+    };
+    const statsNode=document.getElementById("pharmacyOrderStats");
+    if(statsNode)statsNode.innerHTML=[
+      ["সাম্প্রতিক অর্ডার",orderStats.total],
+      ["নতুন Pending",orderStats.pending],
+      ["চলমান",orderStats.active],
+      ["Delivered",orderStats.delivered],
+      ["Delivered Order Value","৳"+orderStats.deliveredValue.toFixed(2)]
+    ].map(([label,value])=>`<article class="pharmacy-order-stat"><strong>${escapeHTML(String(value))}</strong><span>${escapeHTML(label)}</span></article>`).join("");
+    const ids=pharmacyOrdersCache.map(o=>o.id);
+    let itemRows=[];
+    if(ids.length){
+      const {data:items,error:itemError}=await sb.from("order_items").select("order_id,name,unit,price,qty").in("order_id",ids);
+      if(itemError) console.warn("Order item detail query:",itemError.message);
+      itemRows=items||[];
+    }
+    const byOrder={}; itemRows.forEach(item=>(byOrder[item.order_id] ||= []).push(item));
+    const node=document.getElementById("pharmacyOrdersList");
+    const search=(document.getElementById("pharmacyOrderSearch")?.value||"").trim().toLowerCase();
+    const status=document.getElementById("pharmacyOrderStatus")?.value||"all";
+    const filtered=pharmacyOrdersCache.filter(o=>{
+      const hay=[o.id,o.customer_name,o.customer_phone,o.delivery_area].join(" ").toLowerCase();
+      return (!search||hay.includes(search))&&(status==="all"||o.status===status);
+    });
+    const summary=document.getElementById("pharmacyOrdersSummary");
+    if(summary)summary.textContent=`মোট ${pharmacyOrdersCache.length}টি অর্ডার · ফিল্টারে ${filtered.length}টি`;
+    const labels={pending:"Pending",accepted:"Accepted",rejected:"Rejected",processing:"Processing",ready:"Ready",assigned:"Rider assigned",picked_up:"Picked up",out_for_delivery:"Out for delivery",delivered:"Delivered",cancelled:"Cancelled"};
+    node.innerHTML=filtered.length?filtered.map(o=>{
+      const items=(byOrder[o.id]||[]).map(it=>`<li>${escapeHTML(it.name)} — ${Number(it.qty)} ${escapeHTML(it.unit)} × ৳${Number(it.price).toFixed(2)}</li>`).join("");
+      return `<article class="pharmacy-order-row"><div class="pharmacy-order-main"><strong>Order ${escapeHTML(String(o.id).slice(0,8))}</strong><small>${escapeHTML(o.customer_name)} · ${escapeHTML(o.customer_phone)} · ${escapeHTML(o.delivery_area)} · ৳${Number(o.total).toFixed(2)}</small><small>Status: <b>${escapeHTML(labels[o.status]||o.status)}</b> · Payment: ${escapeHTML(o.payment_status||"unpaid")}</small><small>${new Date(o.created_at).toLocaleString()}</small><details><summary>Order items & delivery details</summary><ul>${items||"<li>Item details unavailable</li>"}</ul><p>Subtotal: ৳${Number(o.subtotal).toFixed(2)} · Delivery: ৳${Number(o.delivery_fee).toFixed(2)}</p><p>Payment method: ${escapeHTML(o.payment_method||"cod")} · Status: ${escapeHTML(o.payment_status||"unpaid")}</p><pre>${escapeHTML(o.delivery_address||"")}</pre>${o.note?`<p>Note: ${escapeHTML(o.note)}</p>`:""}</details></div><div class="inventory-actions">${o.status==="pending"?`<button class="button" data-order-action="accepted" data-order-id="${o.id}">Accept</button><button class="button button-secondary" data-order-action="rejected" data-order-id="${o.id}">Reject</button>`:""}${o.status==="accepted"?`<button class="button" data-order-action="processing" data-order-id="${o.id}">Processing</button>`:""}${o.status==="processing"?`<button class="button" data-order-action="ready" data-order-id="${o.id}">Ready</button>`:""}</div></article>`;
+    }).join(""):"এই Filter/Search অনুযায়ী কোনো Order নেই।";
+    node.querySelectorAll("[data-order-action]").forEach(btn=>btn.addEventListener("click",async()=>{
+      btn.disabled=true; const next=btn.dataset.orderAction;
+      const previous=next==="accepted"||next==="rejected"?"pending":next==="processing"?"accepted":"processing";
+      const {error:updateError}=await sb.from("orders").update({status:next,updated_at:new Date().toISOString()}).eq("id",btn.dataset.orderId).eq("pharmacy_id",pid).eq("status",previous);
+      if(updateError){toast(updateError.message,true);btn.disabled=false;return;}
       await refreshPharmacyOrders();
     }));
   }
@@ -986,20 +1058,23 @@ loadSheetData();
     refresh:async()=>{
       const content=document.getElementById("pharmacyDashboardContent");
       if(!window.SM24_PHARMACY.isOwner()){content.hidden=true; pharmacyDashStatus.textContent="এই অংশ ব্যবহারের অনুমতি নেই।";return;}
-      content.hidden=false; pharmacyDashStatus.textContent="Pharmacy Owner হিসেবে প্রবেশ অনুমোদিত।"; await refreshInventory(); await refreshPharmacyOrders();
+      content.hidden=false; pharmacyDashStatus.textContent="Pharmacy Owner হিসেবে প্রবেশ অনুমোদিত।"; await refreshInventory(); await refreshPharmacyOrders(); await refreshStockHistory();
     }
   };
   document.getElementById("pharmacyOrdersRefresh")?.addEventListener("click",()=>refreshPharmacyOrders().catch(e=>toast(e.message,true)));
+  document.getElementById("pharmacyOrderSearch")?.addEventListener("input",()=>refreshPharmacyOrders().catch(e=>toast(e.message,true)));
+  document.getElementById("pharmacyOrderStatus")?.addEventListener("change",()=>refreshPharmacyOrders().catch(e=>toast(e.message,true)));
   inventoryForm?.addEventListener("submit",async e=>{
     e.preventDefault(); const status=document.getElementById("inventoryStatus");
     if(!window.SM24_PHARMACY.isOwner()){status.textContent="অনুমতি নেই।";return;}
-    const fd=new FormData(inventoryForm), payload={pharmacy_id:currentProfile.pharmacy_id,name:String(fd.get("name")||"").trim(),generic_name:String(fd.get("generic_name")||"").trim()||null,unit:String(fd.get("unit")||""),price:Number(fd.get("price")),stock_qty:Number(fd.get("stock_qty")),is_available:fd.get("is_available")==="on"};
-    if(!payload.name || !Number.isFinite(payload.price)||payload.price<=0||!Number.isInteger(payload.stock_qty)||payload.stock_qty<0){status.textContent="সঠিক নাম, দাম ও স্টক দিন।";return;}
+    const fd=new FormData(inventoryForm), payload={pharmacy_id:currentProfile.pharmacy_id,name:String(fd.get("name")||"").trim(),generic_name:String(fd.get("generic_name")||"").trim()||null,unit:String(fd.get("unit")||""),price:Number(fd.get("price")),stock_qty:Number(fd.get("stock_qty")),low_stock_threshold:Number(fd.get("low_stock_threshold")??5),expiry_date:String(fd.get("expiry_date")||"")||null,is_available:fd.get("is_available")==="on"};
+    if(!payload.name || !Number.isFinite(payload.price)||payload.price<=0||!Number.isInteger(payload.stock_qty)||payload.stock_qty<0||!Number.isInteger(payload.low_stock_threshold)||payload.low_stock_threshold<0||payload.low_stock_threshold>100000){status.textContent="সঠিক নাম, দাম ও স্টক দিন।";return;}
     const id=fd.get("id"), btn=document.getElementById("inventorySave"); btn.disabled=true; status.textContent="সংরক্ষণ হচ্ছে…";
     try{const q=id?sb.from("pharmacy_inventory").update(payload).eq("id",id).eq("pharmacy_id",currentProfile.pharmacy_id):sb.from("pharmacy_inventory").insert(payload);const {error}=await q;if(error)throw error;resetInventoryForm();status.textContent="Inventory সংরক্ষিত হয়েছে।";await refreshInventory();}catch(err){status.textContent=err.message||"সংরক্ষণ ব্যর্থ হয়েছে।";}finally{btn.disabled=false;}
   });
   document.getElementById("inventoryCancel")?.addEventListener("click",resetInventoryForm);
   document.getElementById("inventoryRefresh")?.addEventListener("click",()=>refreshInventory().catch(e=>toast(e.message,true)));
+  document.getElementById("stockHistoryRefresh")?.addEventListener("click",()=>refreshStockHistory().catch(e=>{const n=document.getElementById("stockHistoryStatus");if(n)n.textContent=e.message||"History load failed."; }));
 
   window.loadAdminPaymentOrders = async function() {
     const root = document.getElementById("adminPaymentOrders");
