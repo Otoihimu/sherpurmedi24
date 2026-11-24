@@ -478,3 +478,35 @@ img { max-width: 100%; }
 .auth-profile-details dt { color:var(--muted); font-size:13px; }
 .auth-profile-details dd { margin:0; color:var(--ink); font-size:13px; font-weight:600; overflow-wrap:anywhere; }
 .auth-profile-load-status { min-height:16px; margin:8px 0 0; font-size:12px; }
+
+
+/* Phase 4C — customer saved delivery addresses */
+.saved-addresses { margin-top:20px; padding-top:18px; border-top:1px solid var(--line); }
+.saved-address-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.saved-address-heading h3 { margin:0; color:var(--navy); font-size:17px; }
+.saved-address-heading p { margin:4px 0 12px; font-size:12px; }
+.address-count { flex:0 0 auto; padding:5px 9px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:12px; font-weight:700; }
+.address-list { display:grid; gap:10px; margin:12px 0; }
+.address-card { padding:13px; border:1px solid var(--line); border-radius:11px; background:#fff; }
+.address-card.is-default { border-color:var(--green); background:#f4faf6; }
+.address-card-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.address-card-title { color:var(--navy); font-weight:700; }
+.address-default-tag { color:var(--green); font-size:11px; font-weight:700; }
+.address-card p { margin:6px 0; font-size:12px; line-height:1.55; overflow-wrap:anywhere; }
+.address-card-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:9px; }
+.address-card-actions button { border:1px solid var(--line); border-radius:7px; padding:6px 9px; background:#fff; color:var(--navy); font-size:12px; cursor:pointer; }
+.address-card-actions .address-delete { color:#a23333; }
+.address-form { display:grid; gap:10px; margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:12px; background:#fbfdfb; }
+.address-form h4 { margin:0 0 2px; color:var(--navy); }
+.address-form label { display:grid; gap:5px; color:var(--ink); font-size:12px; font-weight:600; }
+.address-form input:not([type=checkbox]), .address-form select, .address-form textarea { width:100%; min-height:40px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font:inherit; }
+.address-form textarea { resize:vertical; }
+.address-form .address-default-check { display:flex; align-items:center; gap:8px; }
+.address-form .address-default-check input { width:17px; height:17px; }
+.address-form button { width:100%; min-height:42px; }
+.address-cancel { border:1px solid var(--line); background:#fff; color:var(--navy); border-radius:9px; }
+.address-status { min-height:16px; margin:0; font-size:12px; }
+.address-form [hidden] { display:none !important; }
+@media(max-width:560px) { .saved-address-heading { align-items:center; } .address-card-actions button { flex:1; } }
+
+.address-empty { margin:6px 0; color:var(--muted); font-size:12px; }
