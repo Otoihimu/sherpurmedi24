@@ -464,3 +464,9 @@ img { max-width: 100%; }
 .sm24-toast { position:fixed; z-index:500; left:50%; bottom:24px; width:min(calc(100% - 32px),520px); padding:14px 18px; border-radius:12px; background:#087b43; color:#fff; font-weight:600; text-align:center; box-shadow:0 10px 35px rgba(0,0,0,.2); opacity:0; transform:translate(-50%,14px); pointer-events:none; transition:opacity .2s ease,transform .2s ease; }
 .sm24-toast.is-visible { opacity:1; transform:translate(-50%,0); }
 .sm24-toast.is-error { background:#a23333; }
+
+/* Auth state visibility: CSS layout rules must never override the hidden attribute. */
+.auth-panel [hidden], .auth-tabs[hidden], #authForm[hidden], #authProfile[hidden], #authLogout[hidden] { display: none !important; }
+.auth-panel #authForm:not([hidden]) { display: grid; }
+.auth-panel .auth-tabs:not([hidden]) { display: flex; }
+.auth-profile:not([hidden]) { display: block; }
