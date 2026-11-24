@@ -378,3 +378,119 @@ async function loadSheetData() {
   }
 }
 loadSheetData();
+
+
+// ===== Supabase customer authentication (Phase 4A) =====
+(() => {
+  const cfg = window.SM24_CONFIG || {};
+  const clientLib = window.supabase;
+  const openBtn = document.getElementById("accountOpen");
+  const overlay = document.getElementById("authOverlay");
+  if (!openBtn || !overlay) return;
+  const $id = (id) => document.getElementById(id);
+  const status = $id("authStatus");
+  const authForm = $id("authForm");
+  const logoutBtn = $id("authLogout");
+  const tabs = [...document.querySelectorAll("[data-auth-mode]")];
+  let mode = "login";
+  let sb = null;
+
+  if (clientLib && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY) {
+    sb = clientLib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
+  }
+  function say(message, isError = false) {
+    status.textContent = message;
+    status.style.color = isError ? "#a23333" : "#087b43";
+  }
+  function setMode(next) {
+    mode = next;
+    $id("authNameWrap").hidden = mode !== "signup";
+    $id("authPhoneWrap").hidden = mode !== "signup";
+    $id("authAreaWrap").hidden = mode !== "signup";
+    $id("authPassword").autocomplete = mode === "signup" ? "new-password" : "current-password";
+    $id("authTitle").textContent = mode === "signup" ? "Create customer account" : "Customer login";
+    $id("authMessage").textContent = mode === "signup" ? "Register with your email and password." : "Sign in to your account.";
+    $id("authSubmit").textContent = mode === "signup" ? "Create account" : "Login";
+    tabs.forEach(t => t.classList.toggle("is-active", t.dataset.authMode === mode));
+    say("");
+  }
+  function show() { overlay.hidden = false; say(""); }
+  function hide() { overlay.hidden = true; }
+  function updateSession(user) {
+    if (user) {
+      openBtn.textContent = user.user_metadata?.full_name || user.email || "Account";
+      logoutBtn.hidden = false;
+      $id("authMessage").textContent = "Signed in as " + (user.email || "");
+      authForm.hidden = true;
+      tabs.forEach(t => t.hidden = true);
+    } else {
+      openBtn.textContent = "লগইন";
+      logoutBtn.hidden = true;
+      authForm.hidden = false;
+      tabs.forEach(t => t.hidden = false);
+      setMode("login");
+    }
+  }
+  openBtn.addEventListener("click", show);
+  $id("authClose").addEventListener("click", hide);
+  overlay.addEventListener("click", e => { if (e.target === overlay) hide(); });
+  tabs.forEach(t => t.addEventListener("click", () => setMode(t.dataset.authMode)));
+
+  if (!sb) {
+    openBtn.addEventListener("click", () => say("Supabase configuration or client library is missing.", true));
+    return;
+  }
+
+  authForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $id("authEmail").value.trim();
+    const password = $id("authPassword").value;
+    const submit = $id("authSubmit");
+    submit.disabled = true;
+    say(mode === "signup" ? "Creating account..." : "Signing in...");
+    try {
+      let result;
+      if (mode === "signup") {
+        const full_name = $id("authName").value.trim();
+        if (!full_name) throw new Error("Please enter your name.");
+        result = await sb.auth.signUp({
+          email, password,
+          options: { data: {
+            full_name,
+            phone: $id("authPhone").value.trim(),
+            area: $id("authArea").value,
+            requested_role: "customer"
+          }}
+        });
+        if (result.error) throw result.error;
+        if (result.data.session) {
+          say("Account created and signed in.");
+          updateSession(result.data.user);
+        } else {
+          say("Account created. You can now log in.");
+          setMode("login");
+        }
+      } else {
+        result = await sb.auth.signInWithPassword({ email, password });
+        if (result.error) throw result.error;
+        say("Login successful.");
+        updateSession(result.data.user);
+      }
+    } catch (err) {
+      say(err.message || "Authentication failed.", true);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  logoutBtn.addEventListener("click", async () => {
+    const { error } = await sb.auth.signOut();
+    if (error) say(error.message, true);
+    else { say("You have logged out."); updateSession(null); }
+  });
+  sb.auth.getSession().then(({ data, error }) => {
+    if (error) say(error.message, true);
+    updateSession(data.session?.user || null);
+  });
+  sb.auth.onAuthStateChange((_event, session) => updateSession(session?.user || null));
+  setMode("login");
+})();
