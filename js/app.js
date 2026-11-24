@@ -29,7 +29,7 @@ const menuToggle = $("#menuToggle");
 const mainNav = $("#mainNav");
 
 function showPage(pageName, updateHistory = true) {
-  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin"];
+  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin", "pharmacy-apply"];
   const page = validPages.includes(pageName) ? pageName : "home";
   if (page === "admin" && !window.SM24_ADMIN?.isAdmin()) {
     window.SM24_ADMIN?.showDenied();
@@ -706,8 +706,70 @@ loadSheetData();
       if (statusNode) statusNode.textContent = "Database profile could not be loaded; showing account details available from sign-in.";
       console.warn("Profile load failed:", err.message || err);
     }
-    if (currentUser?.id === user.id) { renderAccountState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true)); }
+    if (currentUser?.id === user.id) { renderAccountState(); renderPharmacyApplyState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true)); }
   }
+  const pharmacyForm = document.getElementById("pharmacyApplicationForm");
+  const pharmacyAuthNotice = document.getElementById("pharmacyApplyAuthNotice");
+  const pharmacyExisting = document.getElementById("pharmacyApplicationExisting");
+  function renderPharmacyApplyState() {
+    if (!pharmacyForm) return;
+    if (!currentUser) {
+      pharmacyForm.hidden = true;
+      pharmacyAuthNotice.hidden = false;
+      pharmacyAuthNotice.textContent = "ফার্মেসির আবেদন করতে আগে Customer/Owner Account দিয়ে Login বা Registration করুন।";
+      pharmacyExisting.hidden = true;
+      return;
+    }
+    pharmacyAuthNotice.hidden = true;
+    pharmacyForm.hidden = false;
+    loadMyPharmacyApplication();
+  }
+  async function loadMyPharmacyApplication() {
+    if (!currentUser || !pharmacyExisting) return;
+    const { data, error } = await sb.from("pharmacy_applications")
+      .select("pharmacy_name,status,created_at")
+      .eq("applicant_id", currentUser.id)
+      .order("created_at", {ascending:false}).limit(1);
+    if (error) { pharmacyExisting.hidden = false; pharmacyExisting.textContent = "আবেদনের অবস্থা লোড করা যায়নি: " + error.message; return; }
+    if (data && data.length) {
+      const item = data[0];
+      pharmacyExisting.hidden = false;
+      pharmacyExisting.textContent = `সর্বশেষ আবেদন: ${item.pharmacy_name} — অবস্থা: ${item.status === "pending" ? "পর্যালোচনাধীন" : item.status === "approved" ? "অনুমোদিত" : "প্রত্যাখ্যাত"}`;
+      if (item.status === "pending") pharmacyForm.hidden = true;
+    } else pharmacyExisting.hidden = true;
+  }
+  pharmacyForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = document.getElementById("pharmacyApplicationStatus");
+    const submit = document.getElementById("pharmacyApplicationSubmit");
+    if (!currentUser || !sb) { status.textContent = "আবেদন করতে Login করুন।"; return; }
+    const formData = new FormData(pharmacyForm);
+    const payload = {
+      applicant_id: currentUser.id,
+      pharmacy_name: String(formData.get("pharmacy_name") || "").trim(),
+      owner_name: String(formData.get("owner_name") || "").trim(),
+      phone: String(formData.get("phone") || "").trim(),
+      area: String(formData.get("area") || "").trim(),
+      address: String(formData.get("address") || "").trim(),
+      license_number: String(formData.get("license_number") || "").trim(),
+      status: "pending"
+    };
+    if (Object.values(payload).some(v => typeof v === "string" && !v)) { status.textContent = "সব তথ্য পূরণ করুন।"; return; }
+    submit.disabled = true; status.textContent = "আবেদন জমা হচ্ছে…";
+    try {
+      const { data: existing, error: checkError } = await sb.from("pharmacy_applications")
+        .select("id,status").eq("applicant_id", currentUser.id).eq("status","pending").limit(1);
+      if (checkError) throw checkError;
+      if (existing?.length) throw new Error("আপনার একটি আবেদন ইতিমধ্যে পর্যালোচনাধীন আছে।");
+      const { error } = await sb.from("pharmacy_applications").insert(payload);
+      if (error) throw error;
+      pharmacyForm.reset();
+      status.textContent = "আবেদন জমা হয়েছে। Admin যাচাই না করা পর্যন্ত ফার্মেসি সক্রিয় হবে না।";
+      await loadMyPharmacyApplication();
+    } catch (err) { status.textContent = err.message || "আবেদন জমা হয়নি।"; }
+    finally { submit.disabled = false; }
+  });
+  if (currentUser) renderPharmacyApplyState();
   window.SM24_ADMIN = {
     isAdmin: () => !!currentUser && currentProfile?.role === "admin" && currentProfile?.approved === true,
     client: () => sb,
@@ -830,7 +892,7 @@ loadSheetData();
     if (!currentUser && !overlay.hidden) renderAccountState();
   });
   sb.auth.onAuthStateChange((_event, session) => {
-    currentUser = session?.user || null; sessionReady = true;
+    currentUser = session?.user || null; sessionReady = true; renderPharmacyApplyState();
     if (!currentUser) { currentProfile = null; renderAccountState(); return; }
     // Avoid awaiting Supabase queries inside the auth callback.
     queueMicrotask(() => loadCurrentProfile(currentUser));
