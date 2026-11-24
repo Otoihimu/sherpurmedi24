@@ -549,3 +549,16 @@ img { max-width: 100%; }
 .pharmacy-apply-panel .address-form label { display: grid; gap: 7px; font-weight: 650; }
 .pharmacy-apply-panel input, .pharmacy-apply-panel textarea { width: 100%; padding: 12px; border: 1px solid var(--border, #dce5df); border-radius: 9px; font: inherit; }
 .pharmacy-apply-panel .form-note { color: var(--muted); line-height: 1.6; font-size: 13px; }
+
+/* Pharmacy dashboard */
+.pharmacy-inventory-panel{padding:22px;margin-bottom:20px}
+.inventory-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.inventory-form label{display:grid;gap:7px;font-weight:650}
+.inventory-form input,.inventory-form select{width:100%;padding:11px;border:1px solid var(--border,#dce5df);border-radius:9px;font:inherit}
+.inventory-form .inventory-check{display:flex;align-items:center;gap:9px}
+.inventory-form .inventory-check input{width:auto}
+.inventory-form #inventoryStatus{grid-column:1/-1}
+.inventory-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--border,#e3e9e5)}
+.inventory-row small{display:block;color:var(--muted);margin-top:5px}
+.inventory-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:650px){.inventory-form{grid-template-columns:1fr}.inventory-row{align-items:flex-start;flex-direction:column}}
