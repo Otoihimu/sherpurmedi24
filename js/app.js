@@ -29,8 +29,12 @@ const menuToggle = $("#menuToggle");
 const mainNav = $("#mainNav");
 
 function showPage(pageName, updateHistory = true) {
-  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart"];
+  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin"];
   const page = validPages.includes(pageName) ? pageName : "home";
+  if (page === "admin" && !window.SM24_ADMIN?.isAdmin()) {
+    window.SM24_ADMIN?.showDenied();
+    return showPage("home", false);
+  }
 
   $$(".page-view").forEach((view) => {
     const active = view.dataset.page === page;
@@ -433,6 +437,8 @@ loadSheetData();
   function hide() { overlay.hidden = true; }
   function renderAccountState() {
     const signedIn = !!currentUser;
+    const adminLink = document.getElementById("adminNavLink");
+    if (adminLink) adminLink.hidden = !(currentProfile?.role === "admin" && currentProfile?.approved === true);
     authForm.hidden = signedIn;
     tabsWrap.hidden = signedIn;
     profile.hidden = !signedIn;
@@ -700,8 +706,51 @@ loadSheetData();
       if (statusNode) statusNode.textContent = "Database profile could not be loaded; showing account details available from sign-in.";
       console.warn("Profile load failed:", err.message || err);
     }
-    if (currentUser?.id === user.id) { renderAccountState(); await loadSavedAddresses(); }
+    if (currentUser?.id === user.id) { renderAccountState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true)); }
   }
+  window.SM24_ADMIN = {
+    isAdmin: () => !!currentUser && currentProfile?.role === "admin" && currentProfile?.approved === true,
+    client: () => sb,
+    user: () => currentUser,
+    profile: () => currentProfile,
+    showDenied: () => toast("Admin access denied. অনুমোদিত Admin Account দিয়ে Login করুন।", true),
+    refresh: async () => {
+      const statusEl = document.getElementById("adminStatus");
+      const dash = document.getElementById("adminDashboard");
+      if (!window.SM24_ADMIN.isAdmin()) { dash.hidden = true; statusEl.textContent = "এই অংশ ব্যবহারের অনুমতি নেই।"; return; }
+      dash.hidden = false; statusEl.textContent = "Admin হিসেবে প্রবেশ অনুমোদিত।";
+      const client = sb;
+      const [apps, customers, orders] = await Promise.all([
+        client.from("pharmacy_applications").select("id, pharmacy_name, owner_name, phone, area, address, license_number, license_file_url, status, created_at").order("created_at", {ascending:false}),
+        client.from("profiles").select("id", {count:"exact", head:true}).eq("role","customer"),
+        client.from("orders").select("id", {count:"exact", head:true})
+      ]);
+      if (apps.error) throw apps.error;
+      if (customers.error) throw customers.error;
+      if (orders.error) throw orders.error;
+      document.getElementById("adminStats").innerHTML = [
+        ["ফার্মেসি আবেদন", apps.data.length], ["Customer", customers.count ?? 0], ["মোট অর্ডার", orders.count ?? 0]
+      ].map(([label,value]) => `<article class="admin-stat"><strong>${value}</strong><span>${label}</span></article>`).join("");
+      const root = document.getElementById("adminApplications");
+      if (!apps.data.length) { root.innerHTML = "<p>এখনো কোনো Pharmacy Application জমা পড়েনি।</p>"; return; }
+      root.innerHTML = apps.data.map(a => `<article class="admin-application">
+        <div><h4>${escapeHTML(a.pharmacy_name)}</h4><p>মালিক: ${escapeHTML(a.owner_name)} · ফোন: ${escapeHTML(a.phone)}<br>এলাকা: ${escapeHTML(a.area)}<br>ঠিকানা: ${escapeHTML(a.address)}<br>লাইসেন্স: ${escapeHTML(a.license_number || "দেওয়া হয়নি")}</p>
+        <small>স্ট্যাটাস: ${escapeHTML(a.status)}</small></div>
+        <div class="admin-actions">${a.license_file_url ? `<a href="${escapeHTML(a.license_file_url)}" target="_blank" rel="noopener">লাইসেন্স দেখুন</a>` : ""}
+        ${a.status === "pending" ? `<button class="button button-primary" data-app-action="approved" data-app-id="${a.id}">Approve</button><button class="button button-danger" data-app-action="rejected" data-app-id="${a.id}">Reject</button>` : ""}</div>
+      </article>`).join("");
+      root.querySelectorAll("[data-app-action]").forEach(btn => btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const {error} = await client.from("pharmacy_applications").update({status:btn.dataset.appAction, reviewed_by:currentUser.id, reviewed_at:new Date().toISOString()}).eq("id",btn.dataset.appId);
+          if (error) throw error;
+          toast("আবেদনের অবস্থা আপডেট হয়েছে।"); await window.SM24_ADMIN.refresh();
+        } catch(e) { toast(e.message || "Update failed", true); btn.disabled=false; }
+      }));
+    }
+  };
+  const adminLink = document.getElementById("adminNavLink");
+  const updateAdminLink = () => { adminLink.hidden = !window.SM24_ADMIN.isAdmin(); };
   function show() {
     overlay.hidden = false;
     if (!sessionReady) {
@@ -789,3 +838,16 @@ loadSheetData();
   });
   setMode("login");
 })();
+
+// Admin dashboard page events
+document.getElementById("adminRefresh")?.addEventListener("click", () => {
+  window.SM24_ADMIN?.refresh().catch(err => {
+    const node = document.getElementById("adminStatus");
+    if (node) node.textContent = err.message || "Dashboard load failed.";
+  });
+});
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#admin") window.SM24_ADMIN?.refresh().catch(err => {
+    const node = document.getElementById("adminStatus"); if (node) node.textContent = err.message || "Dashboard load failed.";
+  });
+});
