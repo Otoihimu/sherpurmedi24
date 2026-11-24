@@ -38,6 +38,9 @@
         <a href="#pharmacies" data-route="pharmacies">ফার্মেসি</a>
         <a href="#pharmacy-apply" data-route="pharmacy-apply" id="pharmacyApplyNav">ফার্মেসি নিবন্ধন</a>
         <a href="#pharmacy-dashboard" data-route="pharmacy-dashboard" id="pharmacyDashboardNav" hidden>Pharmacy Dashboard</a>
+        <a href="#my-orders" data-route="my-orders" id="myOrdersNav" hidden>আমার অর্ডার</a>
+        <a href="#rider-apply" data-route="rider-apply" id="riderApplyNav">Rider আবেদন</a>
+        <a href="#rider-dashboard" data-route="rider-dashboard" id="riderDashboardNav" hidden>Rider Dashboard</a>
         <a href="#how-it-works" data-route="how-it-works">কীভাবে কাজ করে</a>
         <a href="#about" data-route="about">আমাদের সম্পর্কে</a>
         <a href="#admin" data-route="admin" id="adminNavLink" hidden>Admin Dashboard</a>
@@ -230,10 +233,43 @@
           </form>
         </div>
         <div class="admin-panel"><div class="admin-panel-head"><h3>আমার Inventory</h3><button class="button button-secondary" id="inventoryRefresh" type="button">Refresh</button></div><div id="inventoryList">লোড হচ্ছে…</div></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Customer Orders</h3><button class="button button-secondary" id="pharmacyOrdersRefresh" type="button">Refresh</button></div><div id="pharmacyOrdersList">লোড হচ্ছে…</div></div>
       </div>
     </div></section>
   </section>
 
+  <section class="page-view" data-page="my-orders" id="page-my-orders" hidden>
+    <section class="section"><div class="container">
+      <div class="section-heading"><div><span class="eyebrow">CUSTOMER ACCOUNT</span><h2>আমার অর্ডার</h2><p>আপনার অর্ডারের বর্তমান অবস্থা ও বিস্তারিত দেখুন।</p></div></div>
+      <div class="tracking-toolbar"><div id="customerOrdersStatus" class="admin-status" role="status">অর্ডার লোড হচ্ছে…</div><button class="button button-secondary" type="button" id="refreshCustomerOrders">Refresh Status</button></div>
+      <div id="customerOrdersList"></div>
+    </div></section>
+  </section>
+  <section class="page-view" data-page="rider-apply" id="page-rider-apply" hidden>
+    <section class="section"><div class="container">
+      <div class="section-heading"><div><span class="eyebrow">DELIVERY PARTNER</span><h2>Rider নিবন্ধন</h2><p>ডেলিভারি পার্টনার হতে আবেদন করুন। যাচাই ও Admin অনুমোদনের আগে Rider Account সক্রিয় হবে না।</p></div></div>
+      <div class="admin-panel rider-apply-panel">
+        <div id="riderApplyNotice" class="admin-status">আবেদন করতে Login করুন।</div>
+        <form id="riderApplicationForm" class="rider-form" hidden>
+          <label>পূর্ণ নাম<input name="full_name" required maxlength="120"></label>
+          <label>মোবাইল নম্বর<input name="phone" required maxlength="25"></label>
+          <label>এলাকা<input name="area" required maxlength="100"></label>
+          <label>বর্তমান ঠিকানা<textarea name="address" required maxlength="500"></textarea></label>
+          <label>পরিচয়পত্রের শেষ ৪ অক্ষর (শুধু রেফারেন্স)<input name="id_reference" required maxlength="4" minlength="4"></label>
+          <button class="button button-primary" type="submit" id="riderApplySubmit">আবেদন জমা দিন</button>
+          <p id="riderApplyStatus" role="status"></p>
+        </form>
+        <div id="riderExisting" hidden></div>
+      </div>
+    </div></section>
+  </section>
+  <section class="page-view" data-page="rider-dashboard" id="page-rider-dashboard" hidden>
+    <section class="section"><div class="container">
+      <div class="section-heading"><div><span class="eyebrow">DELIVERY PARTNER</span><h2>Rider Dashboard</h2><p>আপনার কাছে বরাদ্দ করা ডেলিভারি পরিচালনা করুন।</p></div></div>
+      <div id="riderDashboardStatus" class="admin-status">Rider permission যাচাই হচ্ছে…</div>
+      <div id="riderDashboardOrders"></div>
+    </div></section>
+  </section>
   <section class="page-view" data-page="admin" id="page-admin" hidden>
     <section class="section"><div class="container">
       <div class="section-heading"><div><span class="eyebrow">OWNER CONTROL</span><h2>Admin Dashboard</h2><p>শুধু অনুমোদিত Admin এই অংশ ব্যবহার করতে পারবেন।</p></div></div>
@@ -243,6 +279,10 @@
         <div class="admin-panel"><div class="admin-panel-head"><h3>Pharmacy Applications</h3><button class="button button-secondary" id="adminRefresh" type="button">Refresh</button></div>
           <div id="adminApplications">লোড হচ্ছে…</div>
         </div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Delivery Area Manager</h3><button class="button button-secondary" id="adminAreasRefresh" type="button">Refresh</button></div><p>এলাকার নাম ও Delivery Fee নির্ধারণ করুন। বন্ধ করলে ওই এলাকায় নতুন Order নেওয়া হবে না।</p><form id="adminAreaForm" class="admin-area-form"><label>Area Name<input name="area" maxlength="80" required placeholder="যেমন: শেরপুর সদর"></label><label>Delivery Fee (৳)<input name="fee" type="number" min="0" max="10000" step="0.01" required></label><label class="admin-area-active"><input name="active" type="checkbox" checked> Active</label><button class="button button-primary" type="submit">Save Area</button></form><div id="adminDeliveryAreas">লোড হচ্ছে…</div></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Delivery Assignment</h3><button class="button button-secondary" id="adminDeliveryRefresh" type="button">Refresh</button></div><div id="adminDeliveryOrders">লোড হচ্ছে…</div></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>COD Payment Verification</h3><button class="button button-secondary" id="adminPaymentRefresh" type="button">Refresh</button></div><p>শুধু বাস্তবে টাকা পাওয়া নিশ্চিত করার পর Paid নির্বাচন করবেন।</p><div id="adminPaymentOrders">লোড হচ্ছে…</div></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Rider Applications</h3><button class="button button-secondary" id="adminRiderRefresh" type="button">Refresh</button></div><div id="adminRiderApplications">লোড হচ্ছে…</div></div>
       </div>
     </div></section>
   </section>
