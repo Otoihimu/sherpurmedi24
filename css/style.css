@@ -598,3 +598,67 @@ img { max-width: 100%; }
 .tracking-terminal{font-weight:700;color:#a33;margin:0}
 .customer-order-card details ul{padding-left:22px}
 @media(max-width:520px){.tracking-toolbar>*{width:100%}.order-timeline{grid-template-columns:1fr 1fr}}
+
+
+/* Phase 6L — Pharmacy order queue filters */
+.pharmacy-order-filters{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin:14px 0}
+.pharmacy-order-filters label{display:grid;gap:6px;font-weight:600}
+.pharmacy-order-filters input,.pharmacy-order-filters select{width:100%;min-height:44px;border:1px solid var(--border,#d6e0da);border-radius:9px;padding:9px 11px;background:#fff;color:#17352a}
+.pharmacy-order-main{min-width:0;flex:1}
+.pharmacy-order-row{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.pharmacy-order-row details{margin-top:10px}
+@media(max-width:640px){.pharmacy-order-filters{grid-template-columns:1fr}.pharmacy-order-row{display:block}.pharmacy-order-row .inventory-actions{margin-top:12px}}
+
+
+/* Phase 6M — Pharmacy order overview */
+.pharmacy-order-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:16px 0}
+.pharmacy-order-stat{padding:15px;border:1px solid var(--border,#d6e0da);border-radius:12px;background:#fff;display:grid;gap:5px}
+.pharmacy-order-stat strong{font-size:1.35rem;color:#176b45;overflow-wrap:anywhere}
+.pharmacy-order-stat span{font-size:.86rem;color:#52635a}
+
+
+/* Phase 6N — Inventory low-stock alerts */
+.inventory-low-stock{border-left:4px solid #c58a20;background:#fffaf0}
+.low-stock-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#fff0c9;color:#795000;font-size:.72rem;font-weight:700}
+#inventoryLowStockSummary{margin:12px 0}
+
+
+/* Phase 6O — medicine expiry-date alerts */
+.expiry-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#ffe4e4;color:#8d2020;font-size:.72rem;font-weight:700}
+.inventory-expired{border-left:4px solid #b83232;background:#fff6f6}
+\n\n/* Phase 6R — pharmacy stock history */\n#stockHistoryList{display:grid;gap:8px;margin-top:12px}\n#stockHistoryList .inventory-row{display:block}\n#stockHistoryList small{display:block;overflow-wrap:anywhere}\n
+
+/* Phase 6V — final responsive and accessibility polish */
+:where(button, a, input, select, textarea) { touch-action: manipulation; }
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(8,123,67,.42);
+  outline-offset: 2px;
+}
+img, video, iframe { max-width: 100%; }
+:where(.admin-panel, .pharmacy-inventory-panel, .customer-order-card,
+       .pharmacy-order-row, .inventory-row, #stockHistoryList) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+:where(.admin-panel-head, .tracking-toolbar, .customer-order-head) {
+  flex-wrap: wrap;
+}
+:where(.admin-actions, .inventory-actions) > button {
+  min-height: 40px;
+}
+@media (max-width: 600px) {
+  .container { width: min(100% - 28px, 1120px); }
+  .section { padding-block: 48px; }
+  .admin-panel, .pharmacy-inventory-panel { padding: 15px; }
+  .admin-panel-head { align-items: flex-start; }
+  .admin-panel-head > * { max-width: 100%; }
+  #stockHistoryList .inventory-row { padding: 12px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
