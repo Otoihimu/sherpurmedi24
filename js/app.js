@@ -184,7 +184,13 @@ let cart = { pid: null, items: [] };
 let cartArea = "";
 try {
   const saved = JSON.parse(localStorage.getItem("sm24-cart") || "null");
-  if (saved && Array.isArray(saved.items)) cart = saved;
+  if (saved && Array.isArray(saved.items)) {
+    cart = {
+      pid: saved.pid == null ? null : String(saved.pid),
+      items: saved.items.filter(i => i && typeof i.name === "string" && typeof i.unit === "string")
+        .map(i => ({ ...i, qty: Math.max(1, Math.min(99, Number(i.qty) || 1)), price: Math.max(0, Number(i.price) || 0) }))
+    };
+  }
   cartArea = localStorage.getItem("sm24-cart-area") || "";
 } catch (e) { /* storage unavailable: cart lives in memory only */ }
 function saveCart() {
@@ -197,15 +203,16 @@ const unitLabel = (u) => (UNITS[u] ? UNITS[u][window.sm24Language === "en" ? "en
 function addToCart(m) {
   const ph = pharmacies.find((p) => String(p.id) === String(m.pharmacy_id));
   if (!ph || !m.in_stock) return false;
-  if (cart.pid && cart.pid !== m.pharmacy_id && cart.items.length) {
+  if (cart.pid && String(cart.pid) !== String(m.pharmacy_id) && cart.items.length) {
     if (!confirm(tr("আপনার কার্টে অন্য ফার্মেসির ওষুধ আছে। কার্ট খালি করে এই ফার্মেসির ওষুধ নেবেন?",
                     "Your cart has items from another pharmacy. Clear it and add this one?"))) return false;
     cart.items = [];
   }
   cart.pid = m.pharmacy_id;
-  const line = cart.items.find((i) => i.name === m.name && i.unit === m.unit);
+  const line = cart.items.find((i) => (i.inventory_id && m.id && String(i.inventory_id) === String(m.id)) || (String(i.name).trim() === String(m.name).trim() && String(i.unit).trim() === String(m.unit).trim()));
   if (line) line.qty = Math.min(m.stock_qty ?? 99, 99, line.qty + 1);
   else cart.items.push({ inventory_id: m.id || null, name: m.name, unit: m.unit, price: m.price, qty: 1, stock_qty: m.stock_qty ?? null });
+  cart.pid = String(cart.pid);
   saveCart(); renderCart();
   return true;
 }
@@ -215,11 +222,11 @@ function renderCart() {
   const fab = $("#cartFab");
   fab.querySelector(".cart-label").textContent = tr("কার্ট", "Cart");
   const badge = fab.querySelector(".cart-count");
-  badge.textContent = count; badge.hidden = count === 0;
+  badge.textContent = count; badge.hidden = count === 0; fab.setAttribute("aria-label", `${tr("কার্ট", "Cart")} (${count})`);
 
   const view = $("#cartView");
   const ph = pharmacies.find((p) => String(p.id) === String(cart.pid));
-  if (!cart.items.length || !ph) {
+  if (!cart.items.length) {
     view.innerHTML = `<h2>${tr("আপনার কার্ট", "Your cart")}</h2>
       <div class="empty-state"><span>🛒</span><h3>${tr("কার্ট খালি", "Your cart is empty")}</h3>
       <p>${tr("ওষুধ খুঁজে কার্টে যোগ করুন।", "Search for a medicine and add it to your cart.")}</p>
@@ -231,7 +238,8 @@ function renderCart() {
   const fee = areaRow ? areaRow.fee : null;
   view.innerHTML = `
     <h2>${tr("আপনার কার্ট", "Your cart")}</h2>
-    <p class="cart-pharmacy">🏪 ${escapeHTML(ph.name)} · ${escapeHTML(ph.area)} ${ph.is_demo ? '<span class="demo-tag">DEMO</span>' : ""}</p>
+    <p class="cart-pharmacy">🏪 ${escapeHTML(ph?.name || tr("ফার্মেসির তথ্য বর্তমানে পাওয়া যাচ্ছে না", "Pharmacy details currently unavailable"))}${ph?.area ? " · " + escapeHTML(ph.area) : ""} ${ph?.is_demo ? '<span class="demo-tag">DEMO</span>' : ""}</p>
+    ${!ph ? `<p class="cart-note">${tr("ফার্মেসির তথ্য পুনরায় লোড করুন। Checkout-এর সময় সার্ভার বর্তমান ফার্মেসি ও স্টক যাচাই করবে।", "Pharmacy details need to refresh. The server will validate the pharmacy and stock at checkout.")}</p>` : ""}
     <div class="cart-lines">${cart.items.map((i, idx) => `
       <div class="cart-line">
         <div class="cart-name"><strong>${escapeHTML(i.name)}</strong><small>${money(i.price)} / ${escapeHTML(unitLabel(i.unit))}</small></div>
