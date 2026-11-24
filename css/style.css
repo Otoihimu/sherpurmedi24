@@ -470,3 +470,11 @@ img { max-width: 100%; }
 .auth-panel #authForm:not([hidden]) { display: grid; }
 .auth-panel .auth-tabs:not([hidden]) { display: flex; }
 .auth-profile:not([hidden]) { display: block; }
+
+
+/* Phase 4B — read-only profile data from Supabase */
+.auth-profile-details { display:grid; gap:9px; margin:14px 0 4px; }
+.auth-profile-details div { display:grid; grid-template-columns:110px 1fr; gap:10px; padding-top:8px; border-top:1px solid var(--line); }
+.auth-profile-details dt { color:var(--muted); font-size:13px; }
+.auth-profile-details dd { margin:0; color:var(--ink); font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.auth-profile-load-status { min-height:16px; margin:8px 0 0; font-size:12px; }
