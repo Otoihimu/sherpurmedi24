@@ -391,6 +391,7 @@ loadSheetData();
   const status = $id("authStatus");
   const authForm = $id("authForm");
   const logoutBtn = $id("authLogout");
+  const profile = $id("authProfile");
   const tabs = [...document.querySelectorAll("[data-auth-mode]")];
   let mode = "login";
   let sb = null;
@@ -402,14 +403,34 @@ loadSheetData();
     status.textContent = message;
     status.style.color = isError ? "#a23333" : "#087b43";
   }
+  function toast(message, isError = false) {
+    let node = document.getElementById("sm24Toast");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "sm24Toast";
+      node.className = "sm24-toast";
+      node.setAttribute("role", "status");
+      node.setAttribute("aria-live", "polite");
+      document.body.appendChild(node);
+    }
+    node.textContent = message;
+    node.classList.toggle("is-error", isError);
+    node.classList.add("is-visible");
+    window.clearTimeout(toast.timer);
+    toast.timer = window.setTimeout(() => node.classList.remove("is-visible"), 4200);
+  }
   function setMode(next) {
     mode = next;
     $id("authNameWrap").hidden = mode !== "signup";
     $id("authPhoneWrap").hidden = mode !== "signup";
     $id("authAreaWrap").hidden = mode !== "signup";
+    $id("authIdentifierLabel").textContent = mode === "signup" ? "Email address" : "Email or phone number";
+    $id("authEmail").placeholder = mode === "signup" ? "name@example.com" : "Email or phone number";
+    $id("authEmail").autocomplete = mode === "signup" ? "email" : "username";
+    $id("authEmail").type = mode === "signup" ? "email" : "text";
     $id("authPassword").autocomplete = mode === "signup" ? "new-password" : "current-password";
     $id("authTitle").textContent = mode === "signup" ? "Create customer account" : "Customer login";
-    $id("authMessage").textContent = mode === "signup" ? "Register with your email and password." : "Sign in to your account.";
+    $id("authMessage").textContent = mode === "signup" ? "Register with your email and password." : "Sign in with your email or phone number and password.";
     $id("authSubmit").textContent = mode === "signup" ? "Create account" : "Login";
     tabs.forEach(t => t.classList.toggle("is-active", t.dataset.authMode === mode));
     say("");
@@ -418,14 +439,19 @@ loadSheetData();
   function hide() { overlay.hidden = true; }
   function updateSession(user) {
     if (user) {
-      openBtn.textContent = user.user_metadata?.full_name || user.email || "Account";
+      const name = user.user_metadata?.full_name || user.email || user.phone || "Account";
+      openBtn.textContent = name;
       logoutBtn.hidden = false;
-      $id("authMessage").textContent = "Signed in as " + (user.email || "");
+      profile.hidden = false;
+      $id("authProfileName").textContent = name;
+      $id("authProfileEmail").textContent = user.email || user.phone || "";
+      $id("authMessage").textContent = "Your account is signed in.";
       authForm.hidden = true;
       tabs.forEach(t => t.hidden = true);
     } else {
       openBtn.textContent = "লগইন";
       logoutBtn.hidden = true;
+      profile.hidden = true;
       authForm.hidden = false;
       tabs.forEach(t => t.hidden = false);
       setMode("login");
@@ -443,7 +469,7 @@ loadSheetData();
 
   authForm.addEventListener("submit", async e => {
     e.preventDefault();
-    const email = $id("authEmail").value.trim();
+    const identifier = $id("authEmail").value.trim();
     const password = $id("authPassword").value;
     const submit = $id("authSubmit");
     submit.disabled = true;
@@ -454,7 +480,7 @@ loadSheetData();
         const full_name = $id("authName").value.trim();
         if (!full_name) throw new Error("Please enter your name.");
         result = await sb.auth.signUp({
-          email, password,
+          email: identifier, password,
           options: { data: {
             full_name,
             phone: $id("authPhone").value.trim(),
@@ -464,17 +490,25 @@ loadSheetData();
         });
         if (result.error) throw result.error;
         if (result.data.session) {
-          say("Account created and signed in.");
           updateSession(result.data.user);
+          hide();
+          showPage("home");
+          toast("রেজিস্ট্রেশন সফল হয়েছে। SherpurMedi24-এ স্বাগতম!");
         } else {
-          say("Account created. You can now log in.");
-          setMode("login");
+          hide();
+          showPage("home");
+          toast("রেজিস্ট্রেশন সম্পন্ন হয়েছে। লগইনের আগে ইমেইল যাচাই করুন।");
         }
       } else {
-        result = await sb.auth.signInWithPassword({ email, password });
+        const isEmail = identifier.includes("@");
+        result = await sb.auth.signInWithPassword(isEmail
+          ? { email: identifier, password }
+          : { phone: identifier, password });
         if (result.error) throw result.error;
-        say("Login successful.");
         updateSession(result.data.user);
+        hide();
+        showPage("home");
+        toast("লগইন সফল হয়েছে। স্বাগতম!");
       }
     } catch (err) {
       say(err.message || "Authentication failed.", true);
@@ -483,9 +517,16 @@ loadSheetData();
     }
   });
   logoutBtn.addEventListener("click", async () => {
+    logoutBtn.disabled = true;
     const { error } = await sb.auth.signOut();
+    logoutBtn.disabled = false;
     if (error) say(error.message, true);
-    else { say("You have logged out."); updateSession(null); }
+    else {
+      updateSession(null);
+      hide();
+      showPage("home");
+      toast("আপনি সফলভাবে লগআউট করেছেন।");
+    }
   });
   sb.auth.getSession().then(({ data, error }) => {
     if (error) say(error.message, true);
