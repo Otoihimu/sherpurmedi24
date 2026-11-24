@@ -225,15 +225,23 @@
             <label>Generic name<input name="generic_name" maxlength="160"></label>
             <label>Unit<select name="unit" required><option value="piece">Piece</option><option value="tablet">Tablet</option><option value="strip">Strip</option><option value="bottle">Bottle</option><option value="box">Box</option><option value="packet">Packet</option></select></label>
             <label>দাম (৳)<input name="price" type="number" min="0.01" step="0.01" required></label>
-            <label>Stock quantity<input name="stock_qty" type="number" min="0" step="1" required></label>
+            <label>Stock quantity<input name="stock_qty" type="number" min="0" step="1" required></label><label>Low-stock alert threshold<input name="low_stock_threshold" type="number" min="0" max="100000" step="1" value="5" required><small>স্টক এই সংখ্যা বা এর নিচে নামলে সতর্কতা দেখাবে।</small></label><label>Expiry date<input name="expiry_date" type="date"><small>প্যাকেটের গায়ে থাকা মেয়াদোত্তীর্ণের তারিখ দিন।</small></label>
             <label class="inventory-check"><input name="is_available" type="checkbox" checked> Available</label>
             <button class="button" type="submit" id="inventorySave">Save medicine</button>
             <button class="button button-secondary" type="button" id="inventoryCancel" hidden>Cancel edit</button>
             <p id="inventoryStatus" class="admin-status" role="status" aria-live="polite"></p>
           </form>
         </div>
+        <div id="inventoryLowStockSummary" class="admin-status" role="status"></div>
         <div class="admin-panel"><div class="admin-panel-head"><h3>আমার Inventory</h3><button class="button button-secondary" id="inventoryRefresh" type="button">Refresh</button></div><div id="inventoryList">লোড হচ্ছে…</div></div>
-        <div class="admin-panel"><div class="admin-panel-head"><h3>Customer Orders</h3><button class="button button-secondary" id="pharmacyOrdersRefresh" type="button">Refresh</button></div><div id="pharmacyOrdersList">লোড হচ্ছে…</div></div>
+        <div class="admin-panel">
+          <div class="admin-panel-head"><h3>Stock Movement History</h3><button class="button button-secondary" id="stockHistoryRefresh" type="button">Refresh History</button></div>
+          <p class="admin-status">সর্বশেষ ১০০টি stock quantity পরিবর্তনের রেকর্ড। Phase 6Q SQL চালানোর পরের পরিবর্তনগুলোই এখানে দেখা যাবে।</p>
+          <div id="stockHistoryStatus" class="admin-status" role="status" aria-live="polite">History লোড হয়নি।</div>
+          <div id="stockHistoryList"></div>
+        </div>
+        <div class="pharmacy-order-stats" id="pharmacyOrderStats" aria-live="polite"></div>
+        <div class="admin-panel"><div class="admin-panel-head"><h3>Customer Orders</h3><button class="button button-secondary" id="pharmacyOrdersRefresh" type="button">Refresh</button></div><div class="pharmacy-order-filters"><label>Search<input id="pharmacyOrderSearch" type="search" placeholder="Order ID, customer, phone, area"></label><label>Status<select id="pharmacyOrderStatus"><option value="all">All statuses</option><option value="pending">Pending</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="processing">Processing</option><option value="ready">Ready</option><option value="assigned">Rider assigned</option><option value="picked_up">Picked up</option><option value="out_for_delivery">Out for delivery</option><option value="delivered">Delivered</option></select></label></div><div id="pharmacyOrdersSummary" class="admin-status" role="status"></div><div id="pharmacyOrdersList">লোড হচ্ছে…</div></div>
       </div>
     </div></section>
   </section>
