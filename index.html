@@ -216,6 +216,28 @@
           <div><dt>Approval</dt><dd id="authProfileApproval">Pending</dd></div>
         </dl>
         <p id="authProfileLoadStatus" class="auth-profile-load-status" aria-live="polite"></p>
+        <section class="saved-addresses" aria-labelledby="savedAddressTitle">
+          <div class="saved-address-heading">
+            <div><h3 id="savedAddressTitle">Saved delivery addresses</h3><p>Save Home, Office, or another delivery location.</p></div>
+            <span id="addressCount" class="address-count">0/5</span>
+          </div>
+          <div id="addressList" class="address-list" aria-live="polite"></div>
+          <form id="addressForm" class="address-form">
+            <h4 id="addressFormTitle">Add a delivery address</h4>
+            <label>Address label<select id="addressLabel" required><option value="Home">Home</option><option value="Office">Office</option><option value="Other">Other</option></select></label>
+            <label>Recipient name<input id="addressRecipient" required maxlength="100" autocomplete="name"></label>
+            <label>Delivery phone<input id="addressPhone" type="tel" required maxlength="24" autocomplete="tel"></label>
+            <label>Area<select id="addressArea" required><option value="">Select area</option><option>গোয়ালাবাজার</option><option>সরকার বাজার</option><option>আউশকান্দি</option></select></label>
+            <label>Village / Road / Para<input id="addressVillage" required maxlength="160" placeholder="Village, road, para"></label>
+            <label>House / Building number<input id="addressHouse" required maxlength="120" placeholder="House number, building or flat"></label>
+            <label>Nearby landmark (optional)<input id="addressLandmark" maxlength="160" placeholder="Mosque, school, market etc."></label>
+            <label>Delivery instructions (optional)<textarea id="addressNote" rows="2" maxlength="300" placeholder="Any helpful directions"></textarea></label>
+            <label class="address-default-check"><input id="addressDefault" type="checkbox"> Set as my default address</label>
+            <button id="addressSave" class="button button-primary" type="submit">Save address</button>
+            <button id="addressCancel" class="button address-cancel" type="button" hidden>Cancel edit</button>
+            <p id="addressStatus" class="address-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
       </div>
       <button id="authLogout" class="button auth-logout" type="button" hidden>Log out</button>
       <p class="auth-status" id="authStatus" role="status" aria-live="polite"></p>
