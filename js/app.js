@@ -69,6 +69,8 @@ function showPage(pageName, updateHistory = true) {
   mainNav.classList.remove("is-open");
   menuToggle.setAttribute("aria-expanded", "false");
 
+  if (page === "cart") renderCart();
+
   if (updateHistory && location.hash !== `#${page}`) {
     history.pushState({ page }, "", `#${page}`);
   }
@@ -193,7 +195,7 @@ const money = (n) => "৳" + n.toLocaleString(window.sm24Language === "en" ? "en
 const unitLabel = (u) => (UNITS[u] ? UNITS[u][window.sm24Language === "en" ? "en" : "bn"] : u);
 
 function addToCart(m) {
-  const ph = pharmacies.find((p) => p.id === m.pharmacy_id);
+  const ph = pharmacies.find((p) => String(p.id) === String(m.pharmacy_id));
   if (!ph || !m.in_stock) return false;
   if (cart.pid && cart.pid !== m.pharmacy_id && cart.items.length) {
     if (!confirm(tr("আপনার কার্টে অন্য ফার্মেসির ওষুধ আছে। কার্ট খালি করে এই ফার্মেসির ওষুধ নেবেন?",
@@ -216,7 +218,7 @@ function renderCart() {
   badge.textContent = count; badge.hidden = count === 0;
 
   const view = $("#cartView");
-  const ph = pharmacies.find((p) => p.id === cart.pid);
+  const ph = pharmacies.find((p) => String(p.id) === String(cart.pid));
   if (!cart.items.length || !ph) {
     view.innerHTML = `<h2>${tr("আপনার কার্ট", "Your cart")}</h2>
       <div class="empty-state"><span>🛒</span><h3>${tr("কার্ট খালি", "Your cart is empty")}</h3>
@@ -424,11 +426,18 @@ async function loadSheetData() {
       const parsed = parseCSV(a).map((r) => ({ area: r.area, fee: Number(r.delivery_fee) })).filter((r) => r.area && !isNaN(r.fee));
       if (parsed.length) areas = parsed;
     }
-    // Refresh cart prices from the latest Sheet data; drop items that no longer exist.
+    // Refresh saved cart prices when a matching catalogue item exists.
+    // Do not silently erase a customer's cart when a catalogue/API refresh is
+    // incomplete or an item is temporarily absent; the database order RPC
+    // remains the authority for current price, availability, and stock.
     cart.items = cart.items.map((i) => {
-      const m2 = medicines.find((x) => x.pharmacy_id === cart.pid && x.name === i.name && x.unit === i.unit);
-      return m2 && m2.in_stock ? { ...i, price: m2.price } : null;
-    }).filter(Boolean);
+      const m2 = medicines.find((x) =>
+        String(x.pharmacy_id) === String(cart.pid) &&
+        String(x.name).trim() === String(i.name).trim() &&
+        String(x.unit).trim() === String(i.unit).trim()
+      );
+      return m2 ? { ...i, price: m2.price } : i;
+    });
     if (!cart.items.length) cart.pid = null;
     saveCart();
     renderPharmacies(); renderCart();
