@@ -353,14 +353,33 @@ function parseCSV(text) {
     .map((r) => Object.fromEntries(head.map((k, i) => [k.trim(), (r[i] || "").trim()])));
 }
 const isYes = (v) => String(v || "").trim().toLowerCase() === "yes";
+async function loadApprovedPharmaciesFromSupabase() {
+  const cfg = window.SM24_CONFIG || {};
+  if (!window.supabase || !cfg.SUPABASE_URL || !cfg.SUPABASE_PUBLISHABLE_KEY) return [];
+  const client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
+  const { data, error } = await client.from("pharmacies")
+    .select("id, pharmacy_name, owner_name, phone, area, address")
+    .eq("status", "approved").order("created_at", {ascending:false});
+  if (error) { console.warn("Approved pharmacy list unavailable:", error.message); return []; }
+  return (data || []).map(p => ({
+    id: p.id, name: p.pharmacy_name, area: p.area,
+    description: [p.address, p.phone ? "Phone: " + p.phone : ""].filter(Boolean).join(" · "),
+    is_demo: false, owner_name: p.owner_name, source: "supabase"
+  }));
+}
 async function loadSheetData() {
-  if (!SHEET_CSV.pharmacies || !SHEET_CSV.medicines) return;
   const get = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); });
   try {
-    const [p, m, a] = await Promise.all([get(SHEET_CSV.pharmacies), get(SHEET_CSV.medicines),
-      SHEET_CSV.areas ? get(SHEET_CSV.areas).catch(() => null) : Promise.resolve(null)]);
+    const [p, m, a] = await Promise.all([
+      SHEET_CSV.pharmacies ? get(SHEET_CSV.pharmacies).catch(() => "") : Promise.resolve(""),
+      SHEET_CSV.medicines ? get(SHEET_CSV.medicines).catch(() => "") : Promise.resolve(""),
+      SHEET_CSV.areas ? get(SHEET_CSV.areas).catch(() => null) : Promise.resolve(null)
+    ]);
     pharmacies = parseCSV(p).filter((r) => (r.status || "").toLowerCase() === "approved")
       .map((r) => ({ id: r.id, name: r.name, area: r.area, description: r.description || r.address || "", is_demo: isYes(r.is_demo) }));
+    const livePharmacies = await loadApprovedPharmaciesFromSupabase();
+    const knownIds = new Set(pharmacies.map(p => String(p.id)));
+    pharmacies.push(...livePharmacies.filter(p => !knownIds.has(String(p.id))));
     medicines = parseCSV(m).map((r) => ({ pharmacy_id: r.pharmacy_id, name: r.medicine_name, generic: r.generic || "",
       unit: (r.unit || "").toLowerCase(), price: Number(r.price), in_stock: isYes(r.in_stock) }))
       .filter((r) => r.name && !isNaN(r.price));
@@ -455,8 +474,11 @@ loadSheetData();
       $id("authProfileArea").textContent = currentProfile?.area || meta.area || "—";
       $id("authProfileAddress").textContent = currentProfile?.address || "—";
       const role = currentProfile?.role || "customer";
-      $id("authProfileRole").textContent = role === "customer" ? "Customer" : role;
+      const isPharmacy = role === "pharmacy";
+      $id("authProfileRole").textContent = role === "customer" ? "Customer" : role === "admin" ? "Admin" : role === "pharmacy" ? "Pharmacy Owner" : role;
       $id("authProfileApproval").textContent = currentProfile ? (currentProfile.approved ? "Approved" : "Pending approval") : "Not loaded";
+      const savedAddressSection = document.querySelector(".saved-addresses");
+      if (savedAddressSection) savedAddressSection.hidden = isPharmacy || role === "admin";
       renderSavedAddresses();
       say("");
     } else {
@@ -735,7 +757,7 @@ loadSheetData();
       const item = data[0];
       pharmacyExisting.hidden = false;
       pharmacyExisting.textContent = `সর্বশেষ আবেদন: ${item.pharmacy_name} — অবস্থা: ${item.status === "pending" ? "পর্যালোচনাধীন" : item.status === "approved" ? "অনুমোদিত" : "প্রত্যাখ্যাত"}`;
-      if (item.status === "pending") pharmacyForm.hidden = true;
+      if (item.status === "pending" || item.status === "approved") pharmacyForm.hidden = true;
     } else pharmacyExisting.hidden = true;
   }
   pharmacyForm?.addEventListener("submit", async (event) => {
@@ -806,7 +828,7 @@ loadSheetData();
         try {
           const {error} = await client.from("pharmacy_applications").update({status:btn.dataset.appAction, reviewed_by:currentUser.id, reviewed_at:new Date().toISOString()}).eq("id",btn.dataset.appId);
           if (error) throw error;
-          toast("আবেদনের অবস্থা আপডেট হয়েছে।"); await window.SM24_ADMIN.refresh();
+          toast(btn.dataset.appAction === "approved" ? "ফার্মেসি অনুমোদিত হয়েছে এবং Pharmacy profile তৈরি হয়েছে।" : "আবেদন প্রত্যাখ্যান করা হয়েছে।"); await window.SM24_ADMIN.refresh();
         } catch(e) { toast(e.message || "Update failed", true); btn.disabled=false; }
       }));
     }
