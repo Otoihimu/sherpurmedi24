@@ -29,8 +29,16 @@ const menuToggle = $("#menuToggle");
 const mainNav = $("#mainNav");
 
 function showPage(pageName, updateHistory = true) {
-  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin", "pharmacy-apply"];
+  const validPages = ["home", "pharmacies", "how-it-works", "about", "cart", "admin", "pharmacy-apply", "pharmacy-dashboard"];
   const page = validPages.includes(pageName) ? pageName : "home";
+  if (page === "pharmacy-dashboard" && !window.SM24_PHARMACY?.isOwner()) {
+    window.SM24_PHARMACY?.showDenied();
+    return showPage("home", false);
+  }
+  if (page === "cart" && currentProfile?.role === "pharmacy") {
+    toast("Pharmacy Owner Account থেকে Customer Cart ব্যবহার করা যাবে না।", true);
+    return showPage("home", false);
+  }
   if (page === "admin" && !window.SM24_ADMIN?.isAdmin()) {
     window.SM24_ADMIN?.showDenied();
     return showPage("home", false);
@@ -458,6 +466,12 @@ loadSheetData();
     const signedIn = !!currentUser;
     const adminLink = document.getElementById("adminNavLink");
     if (adminLink) adminLink.hidden = !(currentProfile?.role === "admin" && currentProfile?.approved === true);
+    const pharmacyLink = document.getElementById("pharmacyDashboardNav");
+    if (pharmacyLink) pharmacyLink.hidden = !(currentProfile?.role === "pharmacy" && currentProfile?.approved === true && !!currentProfile?.pharmacy_id);
+    const applyLink = document.getElementById("pharmacyApplyNav");
+    if (applyLink) applyLink.hidden = currentProfile?.role === "pharmacy" && currentProfile?.approved === true;
+    const cartFab = document.getElementById("cartFab");
+    if (cartFab) cartFab.hidden = currentProfile?.role === "pharmacy" || currentProfile?.role === "admin";
     authForm.hidden = signedIn;
     tabsWrap.hidden = signedIn;
     profile.hidden = !signedIn;
@@ -728,7 +742,8 @@ loadSheetData();
       if (statusNode) statusNode.textContent = "Database profile could not be loaded; showing account details available from sign-in.";
       console.warn("Profile load failed:", err.message || err);
     }
-    if (currentUser?.id === user.id) { renderAccountState(); renderPharmacyApplyState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true)); }
+    if (currentUser?.id === user.id) { renderAccountState(); renderPharmacyApplyState(); await loadSavedAddresses(); if (location.hash === "#admin" && window.SM24_ADMIN?.isAdmin()) window.SM24_ADMIN.refresh().catch(e => toast(e.message, true));
+      if (location.hash === "#pharmacy-dashboard" && window.SM24_PHARMACY?.isOwner()) window.SM24_PHARMACY.refresh().catch(e => toast(e.message, true)); }
   }
   const pharmacyForm = document.getElementById("pharmacyApplicationForm");
   const pharmacyAuthNotice = document.getElementById("pharmacyApplyAuthNotice");
@@ -792,6 +807,52 @@ loadSheetData();
     finally { submit.disabled = false; }
   });
   if (currentUser) renderPharmacyApplyState();
+  const inventoryForm = document.getElementById("inventoryForm");
+  const pharmacyDashStatus = document.getElementById("pharmacyDashboardStatus");
+  const inventoryList = document.getElementById("inventoryList");
+  function resetInventoryForm() {
+    inventoryForm?.reset();
+    if (inventoryForm?.elements.id) inventoryForm.elements.id.value = "";
+    const cancel = document.getElementById("inventoryCancel"); if (cancel) cancel.hidden = true;
+    const save = document.getElementById("inventorySave"); if (save) save.textContent = "Save medicine";
+  }
+  async function refreshInventory() {
+    if (!window.SM24_PHARMACY.isOwner()) throw new Error("Pharmacy owner permission required.");
+    const pid = currentProfile.pharmacy_id;
+    const {data,error} = await sb.from("pharmacy_inventory").select("id,pharmacy_id,name,generic_name,unit,price,stock_qty,is_available").eq("pharmacy_id",pid).order("name");
+    if (error) throw error;
+    inventoryList.innerHTML = data.length ? data.map(x => `<div class="inventory-row"><div><strong>${escapeHTML(x.name)}</strong><small>${escapeHTML(x.generic_name || "")} · ${escapeHTML(x.unit)} · ৳${Number(x.price).toFixed(2)} · Stock: ${x.stock_qty} · ${x.is_available ? "Available" : "Unavailable"}</small></div><div class="inventory-actions"><button class="button button-secondary" data-edit="${x.id}">Edit</button><button class="button button-secondary" data-delete="${x.id}">Delete</button></div></div>`).join("") : "এখনো কোনো ওষুধ যোগ করা হয়নি।";
+    inventoryList.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => {
+      const x=data.find(y=>String(y.id)===b.dataset.edit); if(!x)return;
+      ["name","generic_name","unit","price","stock_qty","is_available"].forEach(k=>{if(inventoryForm.elements[k].type==="checkbox") inventoryForm.elements[k].checked=!!x[k]; else inventoryForm.elements[k].value=x[k] ?? "";});
+      inventoryForm.elements.id.value=x.id; document.getElementById("inventoryCancel").hidden=false; document.getElementById("inventorySave").textContent="Update medicine";
+    }));
+    inventoryList.querySelectorAll("[data-delete]").forEach(b => b.addEventListener("click", async()=>{
+      if(!confirm("এই ওষুধটি মুছবেন?"))return;
+      const {error:e}=await sb.from("pharmacy_inventory").delete().eq("id",b.dataset.delete).eq("pharmacy_id",pid);
+      if(e) toast(e.message,true); else await refreshInventory();
+    }));
+  }
+  window.SM24_PHARMACY = {
+    isOwner:()=>!!currentUser && currentProfile?.role==="pharmacy" && currentProfile?.approved===true && !!currentProfile?.pharmacy_id,
+    showDenied:()=>toast("অনুমোদিত Pharmacy Owner Account দিয়ে Login করুন।",true),
+    refresh:async()=>{
+      const content=document.getElementById("pharmacyDashboardContent");
+      if(!window.SM24_PHARMACY.isOwner()){content.hidden=true; pharmacyDashStatus.textContent="এই অংশ ব্যবহারের অনুমতি নেই।";return;}
+      content.hidden=false; pharmacyDashStatus.textContent="Pharmacy Owner হিসেবে প্রবেশ অনুমোদিত।"; await refreshInventory();
+    }
+  };
+  inventoryForm?.addEventListener("submit",async e=>{
+    e.preventDefault(); const status=document.getElementById("inventoryStatus");
+    if(!window.SM24_PHARMACY.isOwner()){status.textContent="অনুমতি নেই।";return;}
+    const fd=new FormData(inventoryForm), payload={pharmacy_id:currentProfile.pharmacy_id,name:String(fd.get("name")||"").trim(),generic_name:String(fd.get("generic_name")||"").trim()||null,unit:String(fd.get("unit")||""),price:Number(fd.get("price")),stock_qty:Number(fd.get("stock_qty")),is_available:fd.get("is_available")==="on"};
+    if(!payload.name || !Number.isFinite(payload.price)||payload.price<=0||!Number.isInteger(payload.stock_qty)||payload.stock_qty<0){status.textContent="সঠিক নাম, দাম ও স্টক দিন।";return;}
+    const id=fd.get("id"), btn=document.getElementById("inventorySave"); btn.disabled=true; status.textContent="সংরক্ষণ হচ্ছে…";
+    try{const q=id?sb.from("pharmacy_inventory").update(payload).eq("id",id).eq("pharmacy_id",currentProfile.pharmacy_id):sb.from("pharmacy_inventory").insert(payload);const {error}=await q;if(error)throw error;resetInventoryForm();status.textContent="Inventory সংরক্ষিত হয়েছে।";await refreshInventory();}catch(err){status.textContent=err.message||"সংরক্ষণ ব্যর্থ হয়েছে।";}finally{btn.disabled=false;}
+  });
+  document.getElementById("inventoryCancel")?.addEventListener("click",resetInventoryForm);
+  document.getElementById("inventoryRefresh")?.addEventListener("click",()=>refreshInventory().catch(e=>toast(e.message,true)));
+
   window.SM24_ADMIN = {
     isAdmin: () => !!currentUser && currentProfile?.role === "admin" && currentProfile?.approved === true,
     client: () => sb,
@@ -935,3 +996,5 @@ window.addEventListener("hashchange", () => {
     const node = document.getElementById("adminStatus"); if (node) node.textContent = err.message || "Dashboard load failed.";
   });
 });
+
+window.addEventListener("hashchange",()=>{if(location.hash==="#pharmacy-dashboard")window.SM24_PHARMACY?.refresh().catch(e=>{const n=document.getElementById("pharmacyDashboardStatus");if(n)n.textContent=e.message||"Dashboard load failed.";});});
