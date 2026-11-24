@@ -452,3 +452,15 @@ img { max-width: 100%; }
 .auth-status { min-height:22px; font-size:13px; }
 .auth-panel small { color:var(--muted); }
 @media(max-width:600px) { #accountOpen { padding:8px 10px; min-height:38px; font-size:12px; } .auth-panel { padding:21px; } }
+
+
+/* Authentication UX refinements */
+.auth-profile { margin:18px 0; padding:16px; border:1px solid var(--line); border-radius:12px; background:#f7fbf8; }
+.auth-profile p { margin:4px 0; overflow-wrap:anywhere; }
+.auth-profile p:first-child { color:var(--navy); font-size:17px; font-weight:700; }
+.auth-logout { display:block; width:100%; min-height:48px; margin-top:16px; border:0; border-radius:10px; background:#a92f36; color:#fff; font-size:16px; font-weight:700; cursor:pointer; }
+.auth-logout:hover { background:#8d242b; }
+.auth-logout:disabled { opacity:.6; cursor:wait; }
+.sm24-toast { position:fixed; z-index:500; left:50%; bottom:24px; width:min(calc(100% - 32px),520px); padding:14px 18px; border-radius:12px; background:#087b43; color:#fff; font-weight:600; text-align:center; box-shadow:0 10px 35px rgba(0,0,0,.2); opacity:0; transform:translate(-50%,14px); pointer-events:none; transition:opacity .2s ease,transform .2s ease; }
+.sm24-toast.is-visible { opacity:1; transform:translate(-50%,0); }
+.sm24-toast.is-error { background:#a23333; }
