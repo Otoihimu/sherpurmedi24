@@ -36,6 +36,7 @@
       <nav class="main-nav" id="mainNav" aria-label="প্রধান মেনু">
         <a href="#home" data-route="home">হোম</a>
         <a href="#pharmacies" data-route="pharmacies">ফার্মেসি</a>
+        <a href="#pharmacy-apply" data-route="pharmacy-apply">ফার্মেসি নিবন্ধন</a>
         <a href="#how-it-works" data-route="how-it-works">কীভাবে কাজ করে</a>
         <a href="#about" data-route="about">আমাদের সম্পর্কে</a>
         <a href="#admin" data-route="admin" id="adminNavLink" hidden>Admin Dashboard</a>
@@ -184,6 +185,28 @@
       </div>
     </section>
     </div>
+
+  <section class="page-view" data-page="pharmacy-apply" id="page-pharmacy-apply" hidden>
+    <section class="section"><div class="container">
+      <div class="section-heading"><div><span class="eyebrow">PHARMACY PARTNER</span><h2>ফার্মেসি নিবন্ধন</h2>
+      <p>ফার্মেসির মালিক বা অনুমোদিত প্রতিনিধি আবেদন জমা দিতে পারবেন। Admin যাচাই না করা পর্যন্ত ফার্মেসি অনুমোদিত হবে না।</p></div></div>
+      <div class="admin-panel pharmacy-apply-panel">
+        <div id="pharmacyApplyAuthNotice" class="admin-status" role="status">আবেদন করতে আগে Login করুন।</div>
+        <form id="pharmacyApplicationForm" class="address-form" hidden>
+          <label>ফার্মেসির নাম<input name="pharmacy_name" required maxlength="120"></label>
+          <label>মালিকের নাম<input name="owner_name" required maxlength="120"></label>
+          <label>যোগাযোগের ফোন<input name="phone" required inputmode="tel" maxlength="25"></label>
+          <label>এলাকা<input name="area" required maxlength="100" placeholder="যেমন: গোয়ালাবাজার"></label>
+          <label>সম্পূর্ণ ঠিকানা<textarea name="address" required rows="3" maxlength="500"></textarea></label>
+          <label>ফার্মেসি লাইসেন্স নম্বর<input name="license_number" required maxlength="100"></label>
+          <p class="form-note">লাইসেন্স নম্বর ও পরিচয় Admin যাচাই করবেন। আবেদন জমা দিলেই ফার্মেসি অনুমোদিত হবে না।</p>
+          <button class="button" type="submit" id="pharmacyApplicationSubmit">আবেদন জমা দিন</button>
+          <p id="pharmacyApplicationStatus" class="admin-status" role="status" aria-live="polite"></p>
+        </form>
+        <div id="pharmacyApplicationExisting" hidden></div>
+      </div>
+    </div></section>
+  </section>
 
   <section class="page-view" data-page="admin" id="page-admin" hidden>
     <section class="section"><div class="container">
