@@ -394,7 +394,7 @@ loadSheetData();
   const profile = $id("authProfile");
   const logoutBtn = $id("authLogout");
   const status = $id("authStatus");
-  let mode = "login", currentUser = null, sessionReady = false, sb = null;
+  let mode = "login", currentUser = null, currentProfile = null, sessionReady = false, sb = null;
 
   if (clientLib && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY) {
     sb = clientLib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY);
@@ -438,17 +438,43 @@ loadSheetData();
     profile.hidden = !signedIn;
     logoutBtn.hidden = !signedIn;
     if (signedIn) {
-      const name = currentUser.user_metadata?.full_name || currentUser.email || currentUser.phone || "My account";
+      const meta = currentUser.user_metadata || {};
+      const name = currentProfile?.full_name || meta.full_name || currentUser.email || currentUser.phone || "My account";
       openBtn.textContent = name;
       $id("authTitle").textContent = "Your account";
-      $id("authMessage").textContent = "You are signed in.";
+      $id("authMessage").textContent = "Your profile information";
       $id("authProfileName").textContent = name;
       $id("authProfileEmail").textContent = currentUser.email || currentUser.phone || "";
+      $id("authProfilePhone").textContent = currentProfile?.phone || meta.phone || currentUser.phone || "—";
+      $id("authProfileArea").textContent = currentProfile?.area || meta.area || "—";
+      $id("authProfileAddress").textContent = currentProfile?.address || "—";
+      const role = currentProfile?.role || "customer";
+      $id("authProfileRole").textContent = role === "customer" ? "Customer" : role;
+      $id("authProfileApproval").textContent = currentProfile ? (currentProfile.approved ? "Approved" : "Pending approval") : "Not loaded";
       say("");
     } else {
+      currentProfile = null;
       openBtn.textContent = "লগইন";
       setMode(mode);
     }
+  }
+  async function loadCurrentProfile(user) {
+    if (!user || !sb) { currentProfile = null; return; }
+    const statusNode = $id("authProfileLoadStatus");
+    if (statusNode) statusNode.textContent = "Loading profile…";
+    try {
+      const { data, error } = await sb.from("profiles")
+        .select("id, role, full_name, phone, address, area, pharmacy_id, approved, created_at")
+        .eq("id", user.id).maybeSingle();
+      if (error) throw error;
+      currentProfile = data || null;
+      if (statusNode) statusNode.textContent = data ? "Profile loaded from database." : "Profile row was not found yet.";
+    } catch (err) {
+      currentProfile = null;
+      if (statusNode) statusNode.textContent = "Database profile could not be loaded; showing account details available from sign-in.";
+      console.warn("Profile load failed:", err.message || err);
+    }
+    if (currentUser?.id === user.id) renderAccountState();
   }
   function show() {
     overlay.hidden = false;
@@ -492,7 +518,7 @@ loadSheetData();
         });
         if (result.error) throw result.error;
         if (result.data.session && result.data.user) {
-          currentUser = result.data.user; renderAccountState(); hide();
+          currentUser = result.data.user; await loadCurrentProfile(currentUser); renderAccountState(); hide();
           if (typeof showPage === "function") showPage("home");
           toast("রেজিস্ট্রেশন সফল হয়েছে। স্বাগতম!");
         } else {
@@ -503,7 +529,7 @@ loadSheetData();
         const isEmail = identifier.includes("@");
         result = await sb.auth.signInWithPassword(isEmail ? { email: identifier, password } : { phone: identifier, password });
         if (result.error) throw result.error;
-        currentUser = result.data.user; renderAccountState(); hide();
+        currentUser = result.data.user; await loadCurrentProfile(currentUser); renderAccountState(); hide();
         if (typeof showPage === "function") showPage("home");
         toast("লগইন সফল হয়েছে। স্বাগতম!");
       }
@@ -515,19 +541,25 @@ loadSheetData();
     try {
       const { error } = await sb.auth.signOut();
       if (error) throw error;
-      currentUser = null; renderAccountState(); hide();
+      currentUser = null; currentProfile = null; renderAccountState(); hide();
       if (typeof showPage === "function") showPage("home");
       toast("আপনি সফলভাবে লগআউট করেছেন।");
     } catch (err) { say(err.message || "Could not log out.", true); }
     finally { logoutBtn.disabled = false; }
   });
-  sb.auth.getSession().then(({ data, error }) => {
+  sb.auth.getSession().then(async ({ data, error }) => {
     if (error) say(error.message, true);
-    currentUser = data.session?.user || null; sessionReady = true; renderAccountState();
+    currentUser = data.session?.user || null; sessionReady = true;
+    if (currentUser) await loadCurrentProfile(currentUser);
+    renderAccountState();
     if (!currentUser && !overlay.hidden) renderAccountState();
   });
   sb.auth.onAuthStateChange((_event, session) => {
-    currentUser = session?.user || null; sessionReady = true; renderAccountState();
+    currentUser = session?.user || null; sessionReady = true;
+    if (!currentUser) { currentProfile = null; renderAccountState(); return; }
+    // Avoid awaiting Supabase queries inside the auth callback.
+    queueMicrotask(() => loadCurrentProfile(currentUser));
+    renderAccountState();
   });
   setMode("login");
 })();
